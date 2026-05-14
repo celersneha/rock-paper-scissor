@@ -81,6 +81,13 @@ export async function joinRoom(code: string, playerId: string): Promise<{ room: 
   return { room: data as unknown as Room }
 }
 
+export async function getRoom(roomId: string): Promise<Room | null> {
+  const { data } = await api.get<Room[]>('/rooms', {
+    params: { id: `eq.${roomId}`, select: '*' },
+  })
+  return data?.[0] ?? null
+}
+
 export async function submitChoice(roomId: string, playerNum: 1 | 2, round: number, choice: Choice): Promise<void> {
   const field = playerNum === 1 ? 'p1_choice' : 'p2_choice'
 
@@ -132,13 +139,6 @@ export async function resolveRound(roomId: string, round: number, choice1: Choic
 export async function markRoundReady(roomId: string, playerNum: 1 | 2): Promise<void> {
   const field = playerNum === 1 ? 'p1_ready' : 'p2_ready'
   await api.patch('/rooms', { [field]: true }, { params: { id: `eq.${roomId}` } })
-}
-
-export async function getRoom(roomId: string): Promise<Room | null> {
-  const { data } = await api.get<Room[]>('/rooms', {
-    params: { id: `eq.${roomId}`, select: '*' },
-  })
-  return data?.[0] ?? null
 }
 
 export async function getPlayerBatch(ids: string[]): Promise<Player[]> {

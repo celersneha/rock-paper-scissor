@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS rooms (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE rooms REPLICA IDENTITY FULL;
 ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Players can read their rooms"
@@ -28,6 +27,7 @@ CREATE POLICY "Players can update their rooms"
   ON rooms FOR UPDATE
   USING (auth.uid() = player1_id OR auth.uid() = player2_id);
 
+ALTER TABLE rooms REPLICA IDENTITY FULL;
 ALTER PUBLICATION supabase_realtime ADD TABLE rooms;
 
 CREATE OR REPLACE FUNCTION join_room_by_code(room_code text, player_id uuid)
