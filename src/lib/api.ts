@@ -71,21 +71,14 @@ export async function createRoom(playerId: string): Promise<Room> {
 }
 
 export async function joinRoom(code: string, playerId: string): Promise<{ room: Room; error?: string }> {
-  const { data: rooms } = await api.get<Room[]>('/rooms', {
-    params: { code: `eq.${code}`, select: '*' },
+  const { data } = await api.post<{ error?: string } & Record<string, unknown>>('/rpc/join_room_by_code', {
+    room_code: code,
+    player_id: playerId,
   })
-  if (!rooms?.length) return { room: null!, error: 'Room not found' }
-  const room = rooms[0]
-  if (room.status !== 'waiting') return { room: null!, error: 'Room is already full or in progress' }
-  if (room.player1_id === playerId) return { room: null!, error: 'You cannot join your own room' }
 
-  const { data } = await api.patch<Room[]>('/rooms', {
-    player2_id: playerId,
-    status: 'playing',
-    round_started_at: new Date().toISOString(),
-  }, { params: { id: `eq.${room.id}` } })
+  if (data.error) return { room: null!, error: data.error as string }
 
-  return { room: data[0] }
+  return { room: data as unknown as Room }
 }
 
 export async function submitChoice(roomId: string, playerNum: 1 | 2, round: number, choice: Choice): Promise<void> {

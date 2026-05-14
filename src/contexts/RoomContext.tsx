@@ -111,6 +111,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   async function joinExistingRoom(code: string): Promise<string | null> {
     if (!player) return 'Not logged in'
+    cleanup()
+    roomRef.current = null
+    setState({
+      room: null, playerNum: null, opponentName: '', roundTimeLeft: ROUND_TIME,
+      myChoice: null, opponentChoice: null, roundResult: null, reason: null,
+    })
     try {
       const { room, error } = await joinRoom(code, player.id)
       if (error) return error

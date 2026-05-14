@@ -28,6 +28,24 @@ export default function MultiplayerLobby({ onBack }: Props) {
     if (err) toast(err, 'error')
   }
 
+  const joinForm = (
+    <form onSubmit={handleJoin} className="space-y-4">
+      <input
+        type="text"
+        placeholder="Room code"
+        value={joinCode}
+        onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+        maxLength={6}
+        autoFocus={!room}
+        className="w-full bg-surface-over rounded-xl px-4 py-3 text-center text-2xl font-mono tracking-[0.2em] text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-indigo/50 uppercase"
+      />
+      <button type="submit" disabled={submitting || joinCode.trim().length < 4}
+        className="w-full bg-emerald hover:opacity-90 disabled:opacity-40 rounded-xl py-4 text-lg font-semibold transition-all">
+        {submitting ? 'Joining...' : 'Join Room'}
+      </button>
+    </form>
+  )
+
   if (room) {
     return (
       <div className="min-h-screen bg-surface text-text flex flex-col items-center justify-center p-4">
@@ -42,6 +60,14 @@ export default function MultiplayerLobby({ onBack }: Props) {
             Waiting for opponent...
           </div>
           <button onClick={leaveRoom} className="bg-surface-hover hover:opacity-80 px-6 py-2 rounded-xl text-sm transition-all">Cancel</button>
+
+          <div className="flex items-center gap-3 pt-4">
+            <span className="h-px flex-1 bg-line" />
+            <span className="text-text-soft text-sm">OR join another</span>
+            <span className="h-px flex-1 bg-line" />
+          </div>
+
+          {joinForm}
         </div>
       </div>
     )
@@ -63,21 +89,7 @@ export default function MultiplayerLobby({ onBack }: Props) {
           <span className="h-px flex-1 bg-line" />
         </div>
 
-        <form onSubmit={handleJoin} className="space-y-4">
-          <input
-            type="text"
-            placeholder="Room code"
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-            maxLength={6}
-            autoFocus
-            className="w-full bg-surface-over rounded-xl px-4 py-3 text-center text-2xl font-mono tracking-[0.2em] text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-indigo/50 uppercase"
-          />
-          <button type="submit" disabled={submitting || joinCode.trim().length < 4}
-            className="w-full bg-emerald hover:opacity-90 disabled:opacity-40 rounded-xl py-4 text-lg font-semibold transition-all">
-            {submitting ? 'Joining...' : 'Join Room'}
-          </button>
-        </form>
+        {joinForm}
 
         <button onClick={onBack} className="w-full text-text-soft hover:text-text text-sm transition-colors">← Back</button>
       </div>
