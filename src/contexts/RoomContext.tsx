@@ -160,11 +160,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           }
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') startPolling(roomId)
-      })
+      .subscribe()
 
     channelRef.current = channel
+    startPolling(roomId)
   }
 
   async function createNewRoom(): Promise<string | null> {
