@@ -91,12 +91,15 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           })
         }
 
+        const isNormalFinish = updated.status === 'finished' && updated.current_round >= MAX_ROUNDS && !!updated.rounds?.[updated.current_round - 1]?.result
+
         setState((s) => ({
           ...s, room: updated,
           myChoice: myChoice ?? s.myChoice,
           opponentChoice: oppChoice ?? s.opponentChoice,
           roundResult: round?.result ?? s.roundResult,
           reason: round?.reason ?? s.reason,
+          opponentLeft: updated.status === 'finished' && !isNormalFinish,
         }))
 
       } catch { }
