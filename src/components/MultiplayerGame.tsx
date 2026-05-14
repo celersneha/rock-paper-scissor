@@ -88,7 +88,7 @@ export default function MultiplayerGame({ onBack }: Props) {
 
     if (room.status === 'finished') {
       if (opponentLeft) {
-        toast(`${opponentLabel} has left the game`, 'error')
+        toast(`${opponentName || 'Opponent'} has left the game`, 'error')
         setPhase('abandoned')
       } else {
         setPhase('finished')
