@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
-import { MAX_ROUNDS } from '../lib/constants'
+import { useEffect, useState, useRef } from 'react'
+import { MAX_ROUNDS, ROUND_TIME } from '../lib/constants'
+import { getRoom } from '../lib/api'
 import { useRoom } from '../contexts/RoomContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
-import { choices, meta, type Choice } from '../lib/game'
+import { choices, meta, type Choice, type RoundData } from '../lib/game'
 
 type PickPhase = 'waiting' | 'choosing' | 'reveal' | 'round_result' | 'finished'
 
@@ -12,26 +13,63 @@ interface Props {
 }
 
 export default function MultiplayerGame({ onBack }: Props) {
-  const { room, playerNum, opponentName, roundTimeLeft, myChoice, opponentChoice, roundResult, reason, leaveRoom, makeChoice } = useRoom()
+  const { room, playerNum, opponentName, myChoice, opponentChoice, roundResult, reason, leaveRoom, makeChoice } = useRoom()
   const { player } = useAuth()
   const { toast } = useToast()
   const [pickPhase, setPickPhase] = useState<PickPhase>('waiting')
   const [localChoice, setLocalChoice] = useState<Choice | null>(null)
+  const [timeLeft, setTimeLeft] = useState(ROUND_TIME)
+  const [localOpponentChoice, setLocalOpponentChoice] = useState<Choice | null>(null)
+  const [localRoundResult, setLocalRoundResult] = useState<RoundData | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    setLocalChoice(null)
+    setLocalOpponentChoice(null)
+    setLocalRoundResult(null)
+
+    if (!room || room.status === 'finished') return
+    if (room.status !== 'playing') return
+
+    const started = room.round_started_at ? new Date(room.round_started_at).getTime() : Date.now()
+
+    const tick = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - started) / 1000)
+      setTimeLeft(Math.max(0, ROUND_TIME - elapsed))
+    }, 200)
+    const poll = setInterval(async () => {
+      try {
+        const updated = await getRoom(room.id)
+        if (!updated) return
+        const round = updated.rounds?.[updated.current_round - 1]
+        if (!round) return
+        const oppKey = playerNum === 1 ? 'p2_choice' : 'p1_choice'
+        const opp = round[oppKey] as Choice | null
+        if (opp) setLocalOpponentChoice(opp)
+        if (round.result) setLocalRoundResult(round as RoundData)
+      } catch {}
+    }, 1000)
+
+    pollRef.current = poll
+    return () => { clearInterval(tick); clearInterval(poll) }
+  }, [room?.id, room?.status, room?.current_round, room?.round_started_at, playerNum])
 
   useEffect(() => {
     if (!room) return
     if (room.status === 'finished') { setPickPhase('finished'); return }
 
     const round = room.rounds[room.current_round - 1]
-    if (round?.result) { setPickPhase('round_result'); return }
+    const resolved = round?.result || localRoundResult?.result
+    if (resolved) { setPickPhase('round_result'); return }
 
-    if (roundTimeLeft > 0 && roundTimeLeft < 5) {
+    if (timeLeft > 0 && timeLeft < ROUND_TIME) {
       setPickPhase('choosing')
       return
     }
 
     if (pickPhase === 'waiting') setPickPhase('choosing')
-  }, [room, roundTimeLeft, pickPhase])
+  }, [room, timeLeft, pickPhase, localRoundResult])
 
   function handleChoice(c: Choice) {
     if (pickPhase !== 'choosing') return
@@ -42,6 +80,8 @@ export default function MultiplayerGame({ onBack }: Props) {
 
   function handleNext() {
     setLocalChoice(null)
+    setLocalOpponentChoice(null)
+    setLocalRoundResult(null)
     setPickPhase('waiting')
     setTimeout(() => setPickPhase('choosing'), 300)
   }
@@ -53,6 +93,10 @@ export default function MultiplayerGame({ onBack }: Props) {
   }
 
   if (!room || !playerNum) return null
+
+  const displayOpponentChoice = localOpponentChoice || opponentChoice
+  const displayRoundResult = localRoundResult || (roundResult ? { result: roundResult, reason } : null)
+  const displayReason = displayRoundResult?.reason || reason
 
   const opponentLabel = opponentName || 'Opponent'
   let scores = { me: 0, opp: 0 }
@@ -88,9 +132,9 @@ export default function MultiplayerGame({ onBack }: Props) {
         </div>
       </div>
 
-      {(roundTimeLeft ?? 0) >= 0 && !isFinished && pickPhase !== 'round_result' && (
+      {timeLeft >= 0 && !isFinished && pickPhase !== 'round_result' && (
         <div className="text-center mb-6">
-          <p className="text-5xl font-bold mb-1">{roundTimeLeft}</p>
+          <p className="text-5xl font-bold mb-1">{timeLeft}</p>
           <p className="text-text-soft text-sm">seconds</p>
         </div>
       )}
@@ -106,17 +150,17 @@ export default function MultiplayerGame({ onBack }: Props) {
         <div>
           <p className="text-text-soft text-xs mb-2">{opponentLabel}</p>
           <div className="text-7xl min-w-[5rem]">
-            {(pickPhase === 'reveal' || pickPhase === 'round_result') ? (opponentChoice ? meta[opponentChoice].emoji : '❔') : '❔'}
+            {(pickPhase === 'reveal' || pickPhase === 'round_result') ? (displayOpponentChoice ? meta[displayOpponentChoice].emoji : '❔') : '❔'}
           </div>
         </div>
       </div>
 
-      {pickPhase === 'round_result' && roundResult && (
+      {pickPhase === 'round_result' && displayRoundResult && (
         <div className="text-center space-y-3 mb-4">
-          <p className={`text-2xl font-bold ${roundResult === 'draw' ? 'text-yellow' : ((roundResult === 'p1_win' && playerNum === 1) || (roundResult === 'p2_win' && playerNum === 2)) ? 'text-green' : 'text-red'}`}>
-            {roundResult === 'draw' ? "It's a Draw!" : ((roundResult === 'p1_win' && playerNum === 1) || (roundResult === 'p2_win' && playerNum === 2)) ? 'You Win!' : `${opponentLabel} Wins!`}
+          <p className={`text-2xl font-bold ${displayRoundResult.result === 'draw' ? 'text-yellow' : ((displayRoundResult.result === 'p1_win' && playerNum === 1) || (displayRoundResult.result === 'p2_win' && playerNum === 2)) ? 'text-green' : 'text-red'}`}>
+            {displayRoundResult.result === 'draw' ? "It's a Draw!" : ((displayRoundResult.result === 'p1_win' && playerNum === 1) || (displayRoundResult.result === 'p2_win' && playerNum === 2)) ? 'You Win!' : `${opponentLabel} Wins!`}
           </p>
-          {reason && <p className="text-text-soft text-sm">{reason}</p>}
+          {displayReason && <p className="text-text-soft text-sm">{displayReason}</p>}
           <button onClick={handleNext} className="bg-indigo hover:opacity-90 px-8 py-2 rounded-xl font-semibold transition-all">
             {room.current_round < MAX_ROUNDS ? 'Next Round →' : 'See Results →'}
           </button>
