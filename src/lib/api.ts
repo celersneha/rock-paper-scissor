@@ -173,6 +173,8 @@ export async function getPlayerBatch(ids: string[]): Promise<Player[]> {
   return data ?? []
 }
 
-export async function abandonRoom(roomId: string): Promise<void> {
-  await api.patch('/rooms', { status: 'finished' }, { params: { id: `eq.${roomId}` } })
+export async function abandonRoom(roomId: string, winnerId?: string): Promise<void> {
+  const update: Record<string, unknown> = { status: 'finished' }
+  if (winnerId) update.winner_id = winnerId
+  await api.patch('/rooms', update, { params: { id: `eq.${roomId}` } })
 }

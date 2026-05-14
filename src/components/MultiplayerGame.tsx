@@ -208,7 +208,10 @@ export default function MultiplayerGame({ onBack }: Props) {
           <div className="text-center space-y-5">
             <p className="text-5xl">👋</p>
             <p className="text-3xl font-bold">{opponentLabel} has left the game</p>
-            <p className="text-text-soft">Score: {scores.me} - {scores.opp}</p>
+            <p className={`text-2xl font-bold ${room.winner_id === player?.id ? 'text-green' : room.winner_id ? 'text-red' : 'text-yellow'}`}>
+              {room.winner_id === player?.id ? 'You Win!' : room.winner_id ? `${opponentLabel} was winning` : "It's a Tie!"}
+            </p>
+            <p className="text-text-soft">{scores.me} - {scores.opp}</p>
             <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
           </div>
         ) : (

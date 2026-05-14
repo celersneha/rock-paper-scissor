@@ -197,7 +197,17 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   async function leaveRoom() {
     const currentRoom = roomRef.current
     if (currentRoom?.status === 'playing') {
-      try { await abandonRoom(currentRoom.id) } catch {}
+      let winnerId: string | undefined
+      if (currentRoom.rounds?.length) {
+        let p1Score = 0, p2Score = 0
+        for (const r of currentRoom.rounds) {
+          if (r.result === 'p1_win') p1Score++
+          else if (r.result === 'p2_win') p2Score++
+        }
+        if (p1Score > p2Score) winnerId = currentRoom.player1_id
+        else if (p2Score > p1Score) winnerId = currentRoom.player2_id ?? undefined
+      }
+      try { await abandonRoom(currentRoom.id, winnerId) } catch {}
     }
     cleanup()
     clearSession()
