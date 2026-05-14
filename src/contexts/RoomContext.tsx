@@ -1,10 +1,10 @@
-import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   createRoom, joinRoom, submitChoice, resolveRound, getPlayerBatch, getRoom,
 } from '../lib/api'
 import type { Room, Choice, RoundData, RoundResult } from '../lib/game'
-import { MAX_ROUNDS, ROUND_TIME } from '../lib/constants'
+import { MAX_ROUNDS } from '../lib/constants'
 import { useAuth } from './AuthContext'
 import { useToast } from '../components/Toast'
 
@@ -12,7 +12,6 @@ interface RoomState {
   room: Room | null
   playerNum: 1 | 2 | null
   opponentName: string
-  roundTimeLeft: number
   myChoice: Choice | null
   opponentChoice: Choice | null
   roundResult: RoundResult | null
@@ -54,36 +53,19 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const { player } = useAuth()
   const { toast } = useToast()
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const roomRef = useRef<Room | null>(null)
   const playerNumRef = useRef<1 | 2 | null>(null)
-  const playerRef = useRef(player)
-
-  useEffect(() => { playerRef.current = player }, [player])
 
   const [state, setState] = useState<RoomState>({
     room: null, playerNum: null, opponentName: '',
-    roundTimeLeft: ROUND_TIME, myChoice: null,
-    opponentChoice: null, roundResult: null, reason: null,
+    myChoice: null, opponentChoice: null, roundResult: null, reason: null,
   })
 
   function cleanup() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
   }
-
-  const setTimer = useCallback((startedAt: string | null) => {
-    if (timerRef.current) clearInterval(timerRef.current)
-    const started = startedAt ? new Date(startedAt).getTime() : Date.now()
-
-    timerRef.current = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - started) / 1000)
-      const left = Math.max(0, ROUND_TIME - elapsed)
-      setState((s) => ({ ...s, roundTimeLeft: left }))
-    }, 200)
-  }, [])
 
   function startPolling(roomId: string) {
     if (pollRef.current) clearInterval(pollRef.current)
@@ -116,16 +98,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           }
         })
 
-        if (updated.status === 'playing' && !timerRef.current) {
-          setTimer(updated.round_started_at)
-        }
       } catch { }
     }, 1000)
   }
 
   function subscribe(roomId: string, pNum: 1 | 2) {
     cleanup()
-    setTimer(null)
     playerNumRef.current = pNum
 
     const channel = supabase
@@ -155,9 +133,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
             opponentName: oppName || s.opponentName,
           }))
 
-          if (room.status === 'playing') {
-            setTimer(room.round_started_at)
-          }
         }
       )
       .subscribe()
@@ -172,7 +147,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       const room = await createRoom(player.id)
       roomRef.current = room
       setState({
-        room, playerNum: 1, opponentName: '', roundTimeLeft: ROUND_TIME,
+        room, playerNum: 1, opponentName: '',
         myChoice: null, opponentChoice: null, roundResult: null, reason: null,
       })
       saveSession(room.id, 1)
@@ -196,12 +171,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       const [opponent] = await getPlayerBatch([room.player1_id])
       setState({
         room, playerNum: 2, opponentName: opponent?.username || 'Opponent',
-        roundTimeLeft: ROUND_TIME, myChoice: null, opponentChoice: null,
+        myChoice: null, opponentChoice: null,
         roundResult: null, reason: null,
       })
       saveSession(room.id, 2)
       subscribe(room.id, 2)
-      setTimer(room.round_started_at)
       return null
     } catch (err: any) {
       return err?.message || 'Failed to join room'
@@ -214,7 +188,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     roomRef.current = null
     playerNumRef.current = null
     setState({
-      room: null, playerNum: null, opponentName: '', roundTimeLeft: ROUND_TIME,
+      room: null, playerNum: null, opponentName: '',
       myChoice: null, opponentChoice: null, roundResult: null, reason: null,
     })
   }
@@ -241,12 +215,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
         setState({
           room, playerNum: pNum, opponentName: oppName,
-          roundTimeLeft: ROUND_TIME,
           myChoice: null, opponentChoice: null,
           roundResult: null, reason: null,
         })
         subscribe(room.id, pNum)
-        if (room.status === 'playing') setTimer(room.round_started_at)
       } catch { clearSession() }
     })()
   }, [player])
