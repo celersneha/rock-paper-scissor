@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import type { User } from '@supabase/supabase-js'
-import { supabase } from './supabase'
+import { supabase, type Player } from './supabase'
 
 type Choice = 'rock' | 'paper' | 'scissors'
 type Result = 'win' | 'lose' | 'draw'
@@ -38,20 +37,17 @@ const resultStyles: Record<Result, { label: string; color: string }> = {
   draw: { label: "It's a Draw!", color: 'text-yellow-400' },
 }
 
-function determineOverall(
-  player: number,
-  computer: number
-): { text: string } {
+function determineOverall(player: number, computer: number): { text: string } {
   if (player > computer) return { text: '🎉 You are the Champion!' }
   if (computer > player) return { text: '💻 Computer wins the game!' }
   return { text: "🤝 It's a Tie!" }
 }
 
 interface Props {
-  user: User
+  player: Player
 }
 
-export default function Game({ user }: Props) {
+export default function Game({ player }: Props) {
   const [phase, setPhase] = useState<Phase>('pick')
   const [round, setRound] = useState(1)
   const [playerScore, setPlayerScore] = useState(0)
@@ -106,7 +102,7 @@ export default function Game({ user }: Props) {
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-4">
       <div className="absolute top-4 right-4 flex items-center gap-3">
-        <span className="text-sm text-gray-400">{user.email}</span>
+        <span className="text-sm text-indigo-400 font-medium">{player.username}</span>
         <button
           onClick={() => supabase.auth.signOut()}
           className="bg-gray-800 hover:bg-gray-700 text-sm px-4 py-2 rounded-lg transition-colors"
@@ -114,6 +110,8 @@ export default function Game({ user }: Props) {
           Logout
         </button>
       </div>
+
+      <div className="absolute top-4 left-4 text-xs text-gray-600">{player.email}</div>
 
       <h1 className="text-4xl md:text-5xl font-extrabold mb-2 tracking-tight">
         Rock <span className="text-amber-400">Paper</span> Scissors
