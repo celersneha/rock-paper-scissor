@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import {
-  createRoom, joinRoom, submitChoice, resolveRound, advanceRound, getPlayerBatch, getRoom,
+  createRoom, joinRoom, submitChoice, resolveRound, setPlayerReady, getPlayerBatch, getRoom,
 } from '../lib/api'
 import type { Room, Choice, RoundData, RoundResult } from '../lib/game'
 import { MAX_ROUNDS } from '../lib/constants'
@@ -23,7 +23,7 @@ interface RoomContextValue extends RoomState {
   joinExistingRoom: (code: string) => Promise<string | null>
   leaveRoom: () => void
   makeChoice: (choice: Choice) => Promise<void>
-  advanceToNextRound: () => Promise<string | null>
+  markReady: () => Promise<string | null>
 }
 
 const RoomContext = createContext<RoomContextValue>(null!)
@@ -251,21 +251,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function advanceToNextRound(): Promise<string | null> {
+  async function markReady(): Promise<string | null> {
     const room = roomRef.current
-    if (!room) return 'No active room'
+    const pNum = state.playerNum
+    if (!room || !pNum) return 'No active room'
     try {
-      const updated = await advanceRound(room.id)
-      roomRef.current = updated
+      await setPlayerReady(room.id, pNum)
       return null
     } catch (err: any) {
-      return err?.message || 'Failed to advance'
+      return err?.message || 'Failed to set ready'
     }
   }
 
   return (
     <RoomContext.Provider value={{
-      ...state, createNewRoom, joinExistingRoom, leaveRoom, makeChoice, advanceToNextRound,
+      ...state, createNewRoom, joinExistingRoom, leaveRoom, makeChoice, markReady,
     }}>
       {children}
     </RoomContext.Provider>

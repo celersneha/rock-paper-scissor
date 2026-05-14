@@ -142,6 +142,29 @@ export async function advanceRound(roomId: string): Promise<Room> {
   return data[0]
 }
 
+export async function setPlayerReady(roomId: string, playerNum: 1 | 2): Promise<void> {
+  const field = playerNum === 1 ? 'p1_ready' : 'p2_ready'
+
+  await api.patch('/rooms', { [field]: true }, { params: { id: `eq.${roomId}` } })
+
+  const { data: room } = await api.get<Room[]>('/rooms', {
+    params: { id: `eq.${roomId}`, select: 'p1_ready,p2_ready,current_round,status' },
+  })
+  if (!room?.length) return
+
+  const r = room[0]
+  if (r.p1_ready && r.p2_ready) {
+    const isLast = r.current_round >= MAX_ROUNDS
+    const update: Record<string, unknown> = { p1_ready: false, p2_ready: false }
+    if (isLast) {
+      update.status = 'finished'
+    } else {
+      update.current_round = r.current_round + 1
+    }
+    await api.patch('/rooms', update, { params: { id: `eq.${roomId}` } })
+  }
+}
+
 export async function getPlayerBatch(ids: string[]): Promise<Player[]> {
   if (!ids.length) return []
   const { data } = await api.get<Player[]>('/players', {

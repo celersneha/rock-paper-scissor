@@ -18,20 +18,32 @@ interface Props {
 }
 
 export default function MultiplayerGame({ onBack }: Props) {
-  const { room, playerNum, opponentName, advanceToNextRound, leaveRoom, makeChoice } = useRoom()
+  const { room, playerNum, opponentName, markReady, leaveRoom, makeChoice } = useRoom()
   const { player } = useAuth()
   const { toast } = useToast()
   const [localChoice, setLocalChoice] = useState<Choice | null>(null)
   const [reveal, setReveal] = useState<RevealData | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const prevRoundRef = useRef(room?.current_round ?? 0)
+  const [localReady, setLocalReady] = useState(false)
+  const [countdown, setCountdown] = useState(5)
   const revealRoundRef = useRef(0)
+  const prevRoundRef = useRef(room?.current_round ?? 0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (!room || !playerNum) return
 
     const curRound = room.current_round
     const round = room.rounds[curRound - 1]
+
+    if (revealRoundRef.current !== 0 && curRound !== revealRoundRef.current && !round?.result) {
+      setReveal(null)
+      setLocalReady(false)
+      setLocalChoice(null)
+      setCountdown(5)
+      revealRoundRef.current = 0
+      return
+    }
 
     if (round?.result && revealRoundRef.current !== curRound) {
       const myKey = playerNum === 1 ? 'p1_choice' : 'p2_choice'
@@ -46,9 +58,36 @@ export default function MultiplayerGame({ onBack }: Props) {
           result: round.result!, reason: round.reason,
           round: curRound,
         })
+        setLocalReady(false)
+        setCountdown(5)
       }
     }
   }, [room, playerNum])
+
+  useEffect(() => {
+    if (!reveal || localReady) return
+
+    timerRef.current = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current)
+          handleAutoNext()
+          return 0
+        }
+        return c - 1
+      })
+    }, 1000)
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [reveal, localReady])
+
+  async function handleAutoNext() {
+    setLocalReady(true)
+    const err = await markReady()
+    if (err) toast(err, 'error')
+  }
 
   async function handleChoice(c: Choice) {
     if (localChoice || reveal) return
@@ -59,9 +98,9 @@ export default function MultiplayerGame({ onBack }: Props) {
   }
 
   async function handleNextRound() {
-    setLocalChoice(null)
-    setReveal(null)
-    const err = await advanceToNextRound()
+    if (timerRef.current) clearInterval(timerRef.current)
+    setLocalReady(true)
+    const err = await markReady()
     if (err) toast(err, 'error')
   }
 
@@ -74,13 +113,16 @@ export default function MultiplayerGame({ onBack }: Props) {
   if (!room || !playerNum) return null
 
   const opponentLabel = opponentName || 'Opponent'
-  let scores = { me: 0, opp: 0 }
-  room.rounds.forEach((r) => {
-    if (r.result === 'p1_win') { if (playerNum === 1) scores.me++; else scores.opp++ }
-    else if (r.result === 'p2_win') { if (playerNum === 2) scores.me++; else scores.opp++ }
-  })
+  const scores = room.rounds.reduce((acc, r) => {
+    if (r.result === 'p1_win') { playerNum === 1 ? acc.me++ : acc.opp++ }
+    else if (r.result === 'p2_win') { playerNum === 2 ? acc.me++ : acc.opp++ }
+    return acc
+  }, { me: 0, opp: 0 })
 
   const isFinished = room.status === 'finished'
+  const roundHasResult = reveal !== null
+  const waitingForOpponent = roundHasResult && localReady
+  const showChoices = !roundHasResult && !isFinished
 
   return (
     <div className="min-h-screen bg-surface text-text flex flex-col items-center justify-center p-4">
@@ -99,7 +141,7 @@ export default function MultiplayerGame({ onBack }: Props) {
         </div>
         <div className="text-center">
           <p className="text-xs text-text-muted mb-1">Round</p>
-          <p className="text-lg font-semibold text-text-soft">{room.current_round}/{MAX_ROUNDS}</p>
+          <p className="text-lg font-semibold text-text-soft">{isFinished ? MAX_ROUNDS : waitingForOpponent ? reveal!.round : room.current_round}/{MAX_ROUNDS}</p>
         </div>
         <div className="text-center">
           <p className="text-xs text-text-muted mb-1">{opponentLabel}</p>
@@ -107,42 +149,7 @@ export default function MultiplayerGame({ onBack }: Props) {
         </div>
       </div>
 
-      {reveal ? (
-        <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-md text-center space-y-6 animate-[fadeIn_0.3s_ease-out]">
-          <div className="flex items-center justify-center gap-8">
-            <div className="text-center">
-              <p className="text-xs text-text-muted mb-2">You</p>
-              <div className="text-6xl">{meta[reveal.myChoice].emoji}</div>
-              <p className="text-sm text-text-soft mt-1 capitalize">{reveal.myChoice}</p>
-            </div>
-            <span className="text-2xl text-text-muted font-bold">VS</span>
-            <div className="text-center">
-              <p className="text-xs text-text-muted mb-2">{opponentLabel}</p>
-              <div className="text-6xl">{meta[reveal.opponentChoice].emoji}</div>
-              <p className="text-sm text-text-soft mt-1 capitalize">{reveal.opponentChoice}</p>
-            </div>
-          </div>
-
-          <div className={`text-2xl font-bold py-3 px-6 rounded-xl ${
-            reveal.result === 'draw' ? 'bg-yellow/20 text-yellow' :
-            ((reveal.result === 'p1_win' && playerNum === 1) || (reveal.result === 'p2_win' && playerNum === 2))
-              ? 'bg-green/20 text-green' : 'bg-red/20 text-red'
-          }`}>
-            {reveal.result === 'draw' ? "It's a Draw!" :
-             ((reveal.result === 'p1_win' && playerNum === 1) || (reveal.result === 'p2_win' && playerNum === 2))
-              ? 'You Won!' : `${opponentLabel} Won!`}
-          </div>
-
-          {reveal.reason && (
-            <p className="text-text-soft text-sm">{reveal.reason}</p>
-          )}
-
-          <button onClick={handleNextRound}
-            className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">
-            {room.current_round < MAX_ROUNDS ? 'Next Round →' : 'See Results →'}
-          </button>
-        </div>
-      ) : isFinished ? (
+      {isFinished ? (
         <div className="text-center space-y-5">
           <p className="text-5xl">{scores.me > scores.opp ? '🎉' : scores.opp > scores.me ? '😞' : '🤝'}</p>
           <p className="text-3xl font-bold">{scores.me > scores.opp ? 'You win!' : scores.opp > scores.me ? `${opponentLabel} wins!` : "It's a Tie!"}</p>
@@ -161,7 +168,40 @@ export default function MultiplayerGame({ onBack }: Props) {
           </div>
           <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
         </div>
-      ) : (
+      ) : waitingForOpponent ? (
+        <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-md text-center space-y-6">
+          <div className="flex items-center justify-center gap-8">
+            <div className="text-center">
+              <p className="text-xs text-text-muted mb-2">You</p>
+              <div className="text-6xl">{meta[reveal!.myChoice].emoji}</div>
+              <p className="text-sm text-text-soft mt-1 capitalize">{reveal!.myChoice}</p>
+            </div>
+            <span className="text-2xl text-text-muted font-bold">VS</span>
+            <div className="text-center">
+              <p className="text-xs text-text-muted mb-2">{opponentLabel}</p>
+              <div className="text-6xl">{meta[reveal!.opponentChoice].emoji}</div>
+              <p className="text-sm text-text-soft mt-1 capitalize">{reveal!.opponentChoice}</p>
+            </div>
+          </div>
+
+          <div className={`text-2xl font-bold py-3 px-6 rounded-xl ${
+            reveal!.result === 'draw' ? 'bg-yellow/20 text-yellow' :
+            ((reveal!.result === 'p1_win' && playerNum === 1) || (reveal!.result === 'p2_win' && playerNum === 2))
+              ? 'bg-green/20 text-green' : 'bg-red/20 text-red'
+          }`}>
+            {reveal!.result === 'draw' ? "It's a Draw!" :
+             ((reveal!.result === 'p1_win' && playerNum === 1) || (reveal!.result === 'p2_win' && playerNum === 2))
+              ? 'You Won!' : `${opponentLabel} Won!`}
+          </div>
+
+          {reveal!.reason && <p className="text-text-soft text-sm">{reveal!.reason}</p>}
+
+          <div className="flex items-center justify-center gap-2 text-amber mt-4">
+            <span className="inline-block w-2 h-2 bg-amber rounded-full animate-pulse" />
+            <span className="text-sm">Waiting for opponent to continue...</span>
+          </div>
+        </div>
+      ) : showChoices ? (
         <>
           <div className="flex items-center gap-12 md:gap-24 mb-8 text-center">
             <div>
@@ -187,7 +227,41 @@ export default function MultiplayerGame({ onBack }: Props) {
           </div>
           <p className="text-text-soft text-sm">{localChoice ? 'Waiting for opponent...' : 'Choose your move'}</p>
         </>
-      )}
+      ) : reveal && !localReady ? (
+        <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-md text-center space-y-6 animate-[fadeIn_0.3s_ease-out]">
+          <div className="flex items-center justify-center gap-8">
+            <div className="text-center">
+              <p className="text-xs text-text-muted mb-2">You</p>
+              <div className="text-6xl">{meta[reveal.myChoice].emoji}</div>
+              <p className="text-sm text-text-soft mt-1 capitalize">{reveal.myChoice}</p>
+            </div>
+            <span className="text-2xl text-text-muted font-bold">VS</span>
+            <div className="text-center">
+              <p className="text-xs text-text-muted mb-2">{opponentLabel}</p>
+              <div className="text-6xl">{meta[reveal.opponentChoice].emoji}</div>
+              <p className="text-sm text-text-soft mt-1 capitalize">{reveal.opponentChoice}</p>
+            </div>
+          </div>
+
+          <div className={`text-2xl font-bold py-3 px-6 rounded-xl ${
+            reveal.result === 'draw' ? 'bg-yellow/20 text-yellow' :
+            ((reveal.result === 'p1_win' && playerNum === 1) || (reveal.result === 'p2_win' && playerNum === 2))
+              ? 'bg-green/20 text-green' : 'bg-red/20 text-red'
+          }`}>
+            {reveal.result === 'draw' ? "It's a Draw!" :
+             ((reveal.result === 'p1_win' && playerNum === 1) || (reveal.result === 'p2_win' && playerNum === 2))
+              ? 'You Won!' : `${opponentLabel} Won!`}
+          </div>
+
+          {reveal.reason && <p className="text-text-soft text-sm">{reveal.reason}</p>}
+
+          <button onClick={handleNextRound}
+            className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all inline-flex items-center gap-3">
+            {reveal.round < MAX_ROUNDS ? 'Next Round' : 'See Results'}
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/20 text-sm font-mono tabular-nums">{countdown}</span>
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
