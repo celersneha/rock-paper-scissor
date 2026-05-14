@@ -18,7 +18,6 @@ export default function AuthForm() {
 
     const fn = mode === 'login' ? signIn : signUp
     const errMsg = await fn(email, password)
-
     setSubmitting(false)
 
     if (errMsg) {
@@ -30,12 +29,12 @@ export default function AuthForm() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-sm">
-        <h1 className="text-3xl font-bold text-center mb-6">
-          Rock <span className="text-amber-400">Paper</span> Scissors
+    <div className="min-h-screen bg-surface text-text flex items-center justify-center p-4">
+      <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-sm">
+        <h1 className="text-3xl font-bold text-center mb-2">
+          Rock <span className="text-amber">Paper</span> Scissors
         </h1>
-        <p className="text-gray-500 text-center mb-6">
+        <p className="text-text-soft text-center mb-8">
           {mode === 'login' ? 'Sign in to play' : 'Create an account'}
         </p>
 
@@ -47,7 +46,7 @@ export default function AuthForm() {
             onChange={(e) => setEmail(e.target.value)}
             required
             disabled={submitting}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+            className="w-full bg-surface-over rounded-xl px-4 py-3 text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-indigo/50 disabled:opacity-50"
           />
           <input
             type="password"
@@ -57,29 +56,29 @@ export default function AuthForm() {
             required
             minLength={6}
             disabled={submitting}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+            className="w-full bg-surface-over rounded-xl px-4 py-3 text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-indigo/50 disabled:opacity-50"
           />
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && <p className="text-red text-sm">{error}</p>}
 
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg py-2.5 font-semibold transition-colors flex items-center justify-center gap-2"
+            className="w-full bg-indigo hover:opacity-90 disabled:opacity-40 rounded-xl py-3 font-semibold transition-all flex items-center justify-center gap-2"
           >
             {submitting && (
-              <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span className="inline-block w-4 h-4 border-2 border-text/30 border-t-text rounded-full animate-spin" />
             )}
             {submitting ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Sign Up'}
           </button>
         </form>
 
-        <p className="text-gray-500 text-sm text-center mt-6">
+        <p className="text-text-soft text-sm text-center mt-6">
           {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
           <button
             onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError('') }}
             disabled={submitting}
-            className="text-indigo-400 hover:underline disabled:opacity-50"
+            className="text-indigo hover:underline disabled:opacity-50"
           >
             {mode === 'login' ? 'Sign Up' : 'Sign In'}
           </button>

@@ -13,7 +13,6 @@ interface ToastContextValue {
 }
 
 const ToastContext = createContext<ToastContextValue>({ toast: () => {} })
-
 export const useToast = () => useContext(ToastContext)
 
 let nextId = 0
@@ -28,9 +27,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const bg: Record<ToastType, string> = {
-    success: 'bg-green-600',
-    error: 'bg-red-600',
-    info: 'bg-indigo-600',
+    success: 'bg-green/90',
+    error: 'bg-red/90',
+    info: 'bg-indigo/90',
   }
 
   return (
@@ -38,10 +37,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
         {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`${bg[t.type]} text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium animate-slide-up`}
-          >
+          <div key={t.id} className={`${bg[t.type]} text-text px-5 py-3 rounded-xl shadow-lg text-sm font-medium animate-slide-up backdrop-blur-sm`}>
             {t.message}
           </div>
         ))}

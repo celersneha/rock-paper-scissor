@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { SUPABASE_URL, SUPABASE_ANON_KEY, REQUEST_TIMEOUT } from './constants'
 import { supabase } from './supabase'
-import type { Room, RoundData, Choice } from './game'
+import { getRoundResult, getReason, type Room, type RoundData, type Choice } from './game'
 
 export interface Player {
   id: string
@@ -103,7 +103,6 @@ export async function submitChoice(roomId: string, playerNum: 1 | 2, round: numb
 }
 
 export async function resolveRound(roomId: string, round: number, choice1: Choice, choice2: Choice, nextRound: number, isLast: boolean): Promise<void> {
-  const { getRoundResult, getReason } = await import('./game')
   const result = getRoundResult(choice1, choice2)
   const reason = getReason(choice1, choice2)
 

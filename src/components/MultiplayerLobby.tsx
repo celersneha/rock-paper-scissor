@@ -30,51 +30,56 @@ export default function MultiplayerLobby({ onBack }: Props) {
 
   if (room) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-md text-center space-y-6">
+      <div className="min-h-screen bg-surface text-text flex flex-col items-center justify-center p-4">
+        <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-sm text-center space-y-6">
           <h2 className="text-2xl font-bold">Room Created</h2>
-          <div className="bg-gray-800 rounded-xl py-6">
-            <p className="text-xs text-gray-500 mb-2">Share this code</p>
-            <p className="text-5xl font-mono font-bold tracking-[0.3em] text-amber-400">{room.code}</p>
+          <div className="bg-surface-over rounded-xl py-6">
+            <p className="text-xs text-text-muted mb-2">Share this code</p>
+            <p className="text-5xl font-mono font-bold tracking-[0.3em] text-amber">{room.code}</p>
           </div>
-          <div className="flex items-center justify-center gap-2 text-yellow-400">
-            <span className="inline-block w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
+          <div className="flex items-center justify-center gap-2 text-amber">
+            <span className="inline-block w-2 h-2 bg-amber rounded-full animate-pulse" />
             Waiting for opponent...
           </div>
-          <button onClick={leaveRoom}
-            className="bg-gray-800 hover:bg-gray-700 px-6 py-2 rounded-lg text-sm">Cancel</button>
+          <button onClick={leaveRoom} className="bg-surface-hover hover:opacity-80 px-6 py-2 rounded-xl text-sm transition-all">Cancel</button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-md space-y-8">
+    <div className="min-h-screen bg-surface text-text flex flex-col items-center justify-center p-4">
+      <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-sm space-y-8">
         <h2 className="text-2xl font-bold text-center">Multiplayer</h2>
 
         <button onClick={handleCreate} disabled={submitting}
-          className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl py-4 text-lg font-semibold transition-colors">
+          className="w-full bg-indigo hover:opacity-90 disabled:opacity-40 rounded-xl py-4 text-lg font-semibold transition-all">
           {submitting ? 'Creating...' : 'Create Room'}
         </button>
 
         <div className="flex items-center gap-3">
-          <span className="h-px flex-1 bg-gray-800" />
-          <span className="text-gray-500 text-sm">OR</span>
-          <span className="h-px flex-1 bg-gray-800" />
+          <span className="h-px flex-1 bg-line" />
+          <span className="text-text-soft text-sm">OR</span>
+          <span className="h-px flex-1 bg-line" />
         </div>
 
         <form onSubmit={handleJoin} className="space-y-4">
-          <input type="text" placeholder="Enter room code" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} maxLength={6} autoFocus
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-center text-2xl font-mono tracking-[0.2em] text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 uppercase"
+          <input
+            type="text"
+            placeholder="Room code"
+            value={joinCode}
+            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+            maxLength={6}
+            autoFocus
+            className="w-full bg-surface-over rounded-xl px-4 py-3 text-center text-2xl font-mono tracking-[0.2em] text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-indigo/50 uppercase"
           />
           <button type="submit" disabled={submitting || joinCode.trim().length < 4}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-xl py-4 text-lg font-semibold transition-colors">
+            className="w-full bg-emerald hover:opacity-90 disabled:opacity-40 rounded-xl py-4 text-lg font-semibold transition-all">
             {submitting ? 'Joining...' : 'Join Room'}
           </button>
         </form>
 
-        <button onClick={onBack} className="w-full text-gray-500 hover:text-gray-300 text-sm transition-colors">← Back</button>
+        <button onClick={onBack} className="w-full text-text-soft hover:text-text text-sm transition-colors">← Back</button>
       </div>
     </div>
   )

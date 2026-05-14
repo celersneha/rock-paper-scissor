@@ -4,9 +4,9 @@ export type RoundResult = 'p1_win' | 'p2_win' | 'draw'
 export const choices: Choice[] = ['rock', 'paper', 'scissors']
 
 export const meta: Record<Choice, { emoji: string; label: string; color: string }> = {
-  rock: { emoji: '🪨', label: 'Rock', color: 'from-amber-500 to-orange-600' },
-  paper: { emoji: '📄', label: 'Paper', color: 'from-sky-400 to-blue-600' },
-  scissors: { emoji: '✂️', label: 'Scissors', color: 'from-rose-400 to-red-600' },
+  rock: { emoji: '🪨', label: 'Rock', color: 'from-[#d97706] to-[#ea580c]' },
+  paper: { emoji: '📄', label: 'Paper', color: 'from-[#38bdf8] to-[#2563eb]' },
+  scissors: { emoji: '✂️', label: 'Scissors', color: 'from-[#fb7185] to-[#dc2626]' },
 }
 
 const beats: Record<Choice, Choice> = { rock: 'scissors', scissors: 'paper', paper: 'rock' }
