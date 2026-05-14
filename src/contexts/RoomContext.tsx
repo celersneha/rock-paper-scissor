@@ -91,24 +91,36 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     pollRef.current = setInterval(async () => {
       try {
         const updated = await getRoom(roomId)
-        if (!updated || updated.status !== 'playing') return
-
-        let oppName = ''
-        if (updated.player2_id) {
-          const [p2] = await getPlayerBatch([updated.player2_id])
-          oppName = p2?.username || 'Opponent'
-        }
-
-        if (pollRef.current) clearInterval(pollRef.current)
-        pollRef.current = null
+        if (!updated) return
 
         roomRef.current = updated
-        setState((s) => ({
-          ...s, room: updated, opponentName: oppName, roundTimeLeft: ROUND_TIME,
-        }))
-        setTimer(updated.round_started_at)
+
+        const pNum = playerNumRef.current
+        const round = updated.rounds?.[updated.current_round - 1]
+        const myChoice = round?.[pNum === 1 ? 'p1_choice' : 'p2_choice'] as Choice | null
+        const oppChoice = round?.[pNum === 1 ? 'p2_choice' : 'p1_choice'] as Choice | null
+
+        setState((s) => {
+          let oppName = s.opponentName
+          if (updated.status === 'playing' && pNum === 1 && updated.player2_id && !oppName) {
+            getPlayerBatch([updated.player2_id]).then(([p2]) => {
+              if (p2?.username) setState((s2) => ({ ...s2, opponentName: p2.username }))
+            })
+          }
+          return {
+            ...s, room: updated,
+            myChoice: myChoice ?? s.myChoice,
+            opponentChoice: oppChoice ?? s.opponentChoice,
+            roundResult: round?.result ?? s.roundResult,
+            reason: round?.reason ?? s.reason,
+          }
+        })
+
+        if (updated.status === 'playing' && !timerRef.current) {
+          setTimer(updated.round_started_at)
+        }
       } catch { }
-    }, 2000)
+    }, 1000)
   }
 
   function subscribe(roomId: string, pNum: 1 | 2) {
@@ -144,15 +156,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           }))
 
           if (room.status === 'playing') {
-            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
             setTimer(room.round_started_at)
           }
         }
       )
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED' && roomRef.current?.status === 'waiting') {
-          startPolling(roomId)
-        }
+        if (status === 'SUBSCRIBED') startPolling(roomId)
       })
 
     channelRef.current = channel
