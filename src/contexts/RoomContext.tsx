@@ -6,7 +6,6 @@ import {
 import type { Room, Choice, RoundData, RoundResult } from '../lib/game'
 import { MAX_ROUNDS } from '../lib/constants'
 import { useAuth } from './AuthContext'
-import { useToast } from '../components/Toast'
 
 interface RoomState {
   room: Room | null
@@ -53,7 +52,6 @@ function getSession(): { roomId: string; playerNum: 1 | 2 } | null {
 
 export function RoomProvider({ children }: { children: ReactNode }) {
   const { player } = useAuth()
-  const { toast } = useToast()
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const roomRef = useRef<Room | null>(null)
@@ -131,10 +129,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
           const isNormalFinish = room.status === 'finished' && room.current_round >= MAX_ROUNDS && !!room.rounds?.[room.current_round - 1]?.result
           const isOpponentLeft = room.status === 'finished' && !isNormalFinish
-
-          if (isOpponentLeft) {
-            toast('Your opponent has left the game', 'error')
-          }
 
           setState((s) => ({
             ...s, room,

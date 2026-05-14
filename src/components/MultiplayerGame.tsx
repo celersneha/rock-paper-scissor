@@ -89,7 +89,6 @@ export default function MultiplayerGame({ onBack }: Props) {
     if (room.status === 'finished') {
       const aborted = room.current_round < MAX_ROUNDS || !room.rounds?.[room.current_round - 1]?.result
       if (aborted) {
-        toast(`${opponentName || 'Opponent'} has left the game`, 'error')
         setPhase('abandoned')
       } else {
         setPhase('finished')
