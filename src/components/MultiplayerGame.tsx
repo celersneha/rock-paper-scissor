@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
 import { choices, meta, type Choice, type RoundResult, type Room } from '../lib/game'
 
-type Phase = 'choosing' | 'result' | 'waiting' | 'finished'
+type Phase = 'choosing' | 'result' | 'waiting' | 'finished' | 'abandoned'
 
 interface ResultData {
   myChoice: Choice
@@ -87,7 +87,12 @@ export default function MultiplayerGame({ onBack }: Props) {
     }
 
     if (room.status === 'finished') {
-      setPhase('finished')
+      if (opponentLeft) {
+        toast(`${opponentLabel} has left the game`, 'error')
+        setPhase('abandoned')
+      } else {
+        setPhase('finished')
+      }
       return
     }
 
@@ -177,6 +182,7 @@ export default function MultiplayerGame({ onBack }: Props) {
     else if (r.result === 'p2_win') { playerNum === 2 ? acc.me++ : acc.opp++ }
     return acc
   }, { me: 0, opp: 0 })
+  const lastCompletedRound = room.rounds.reduce((max, r) => r.result ? Math.max(max, r.round) : max, 0)
 
   return (
     <div className="min-h-screen bg-surface text-text flex flex-col items-center justify-center p-4">
@@ -195,7 +201,7 @@ export default function MultiplayerGame({ onBack }: Props) {
         </div>
         <div className="text-center">
           <p className="text-xs text-text-muted mb-1">Round</p>
-          <p className="text-lg font-semibold text-text-soft">{phase === 'finished' ? MAX_ROUNDS : displayRound}/{MAX_ROUNDS}</p>
+          <p className="text-lg font-semibold text-text-soft">{phase === 'abandoned' ? lastCompletedRound : phase === 'finished' ? MAX_ROUNDS : displayRound}/{MAX_ROUNDS}</p>
         </div>
         <div className="text-center">
           <p className="text-xs text-text-muted mb-1">{opponentLabel}</p>
@@ -203,37 +209,36 @@ export default function MultiplayerGame({ onBack }: Props) {
         </div>
       </div>
 
-      {phase === 'finished' ? (
-        opponentLeft ? (
-          <div className="text-center space-y-5">
-            <p className="text-5xl">👋</p>
-            <p className="text-3xl font-bold">{opponentLabel} has left the game</p>
-            <p className={`text-2xl font-bold ${room.winner_id === player?.id ? 'text-green' : room.winner_id ? 'text-red' : 'text-yellow'}`}>
-              {room.winner_id === player?.id ? 'You Win!' : room.winner_id ? `${opponentLabel} was winning` : "It's a Tie!"}
-            </p>
-            <p className="text-text-soft">{scores.me} - {scores.opp}</p>
-            <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
+      {phase === 'abandoned' ? (
+        <div className="text-center space-y-5">
+          <p className="text-5xl">👋</p>
+          <p className="text-3xl font-bold mb-4">{opponentLabel} has left the game</p>
+          <p className="text-text-soft text-sm">Game ended at Round {lastCompletedRound}/{MAX_ROUNDS}</p>
+          <p className={`text-2xl font-bold ${room.winner_id === player?.id ? 'text-green' : room.winner_id ? 'text-red' : 'text-yellow'}`}>
+            {room.winner_id === player?.id ? 'You Win!' : room.winner_id ? `${opponentLabel} was winning` : "It's a Tie!"}
+          </p>
+          <p className="text-text-soft text-lg">{scores.me} - {scores.opp}</p>
+          <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
+        </div>
+      ) : phase === 'finished' ? (
+        <div className="text-center space-y-5">
+          <p className="text-5xl">{scores.me > scores.opp ? '🎉' : scores.opp > scores.me ? '😞' : '🤝'}</p>
+          <p className="text-3xl font-bold">{scores.me > scores.opp ? 'You win!' : scores.opp > scores.me ? `${opponentLabel} wins!` : "It's a Tie!"}</p>
+          <p className="text-text-soft">{scores.me} - {scores.opp}</p>
+          <div className="max-w-xs mx-auto space-y-1">
+            {room.rounds.map((r, i) => (
+              <div key={i} className="flex items-center justify-between bg-surface-over/50 rounded-xl px-4 py-2 text-sm">
+                <span className="text-text-muted">R{r.round}</span>
+                <span className="text-lg">{r.p1_choice ? meta[r.p1_choice].emoji : '❓'}</span>
+                <span className={`font-medium ${r.result === 'p1_win' ? 'text-green' : r.result === 'p2_win' ? 'text-red' : 'text-yellow'}`}>
+                  {r.result === 'p1_win' ? 'P1' : r.result === 'p2_win' ? 'P2' : '—'}
+                </span>
+                <span className="text-lg">{r.p2_choice ? meta[r.p2_choice].emoji : '❓'}</span>
+              </div>
+            ))}
           </div>
-        ) : (
-          <div className="text-center space-y-5">
-            <p className="text-5xl">{scores.me > scores.opp ? '🎉' : scores.opp > scores.me ? '😞' : '🤝'}</p>
-            <p className="text-3xl font-bold">{scores.me > scores.opp ? 'You win!' : scores.opp > scores.me ? `${opponentLabel} wins!` : "It's a Tie!"}</p>
-            <p className="text-text-soft">{scores.me} - {scores.opp}</p>
-            <div className="max-w-xs mx-auto space-y-1">
-              {room.rounds.map((r, i) => (
-                <div key={i} className="flex items-center justify-between bg-surface-over/50 rounded-xl px-4 py-2 text-sm">
-                  <span className="text-text-muted">R{r.round}</span>
-                  <span className="text-lg">{r.p1_choice ? meta[r.p1_choice].emoji : '❓'}</span>
-                  <span className={`font-medium ${r.result === 'p1_win' ? 'text-green' : r.result === 'p2_win' ? 'text-red' : 'text-yellow'}`}>
-                    {r.result === 'p1_win' ? 'P1' : r.result === 'p2_win' ? 'P2' : '—'}
-                  </span>
-                  <span className="text-lg">{r.p2_choice ? meta[r.p2_choice].emoji : '❓'}</span>
-                </div>
-              ))}
-            </div>
-            <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
-          </div>
-        )
+          <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
+        </div>
       ) : phase === 'waiting' && resultData ? (
         <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-md text-center space-y-6">
           <div className="flex items-center justify-center gap-8">

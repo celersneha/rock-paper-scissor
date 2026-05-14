@@ -126,8 +126,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
             oppName = p2?.username || 'Opponent'
           }
 
-          const lastRoundResult = room.rounds?.[room.current_round - 1]?.result
-          const isNormalFinish = room.status === 'finished' && (room.current_round >= MAX_ROUNDS || !!lastRoundResult)
+          const isNormalFinish = room.status === 'finished' && room.current_round >= MAX_ROUNDS && !!room.rounds?.[room.current_round - 1]?.result
           const isOpponentLeft = room.status === 'finished' && !isNormalFinish
 
           if (isOpponentLeft) {
