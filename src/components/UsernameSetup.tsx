@@ -1,60 +1,31 @@
-import { useState } from 'react'
-import type { User } from '@supabase/supabase-js'
-import { createPlayer, checkUsernameAvailable, type Player } from './supabase'
+import { useState, type FormEvent } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
 
-interface Props {
-  user: User
-  onComplete: (player: Player) => void
-}
-
-export default function UsernameSetup({ user, onComplete }: Props) {
+export default function UsernameSetup() {
   const [username, setUsername] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const { createProfile } = useAuth()
   const { toast } = useToast()
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
 
     const name = username.trim()
-    if (name.length < 2) {
-      setError('Username must be at least 2 characters')
-      return
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(name)) {
-      setError('Only letters, numbers, and underscores allowed')
-      return
-    }
+    if (name.length < 2) return setError('Username must be at least 2 characters')
+    if (!/^[a-zA-Z0-9_]+$/.test(name)) return setError('Only letters, numbers, and underscores allowed')
 
     setSubmitting(true)
+    const errMsg = await createProfile(name)
+    setSubmitting(false)
 
-    const timeout = setTimeout(() => {
-      setSubmitting(false)
-      toast('Request timed out. Please try again.', 'error')
-    }, 10000)
-
-    try {
-      const available = await checkUsernameAvailable(name)
-      if (!available) {
-        setError('Username is already taken')
-        toast('Username "' + name + '" is already taken', 'error')
-        clearTimeout(timeout)
-        setSubmitting(false)
-        return
-      }
-
-      const player = await createPlayer(user.id, user.email!, name)
+    if (errMsg) {
+      setError(errMsg)
+      toast(errMsg, 'error')
+    } else {
       toast('Welcome, ' + name + '!', 'success')
-      onComplete(player)
-    } catch (err: any) {
-      const msg = err?.message || 'Something went wrong'
-      setError(msg)
-      toast(msg, 'error')
-    } finally {
-      clearTimeout(timeout)
-      setSubmitting(false)
     }
   }
 

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { supabase } from './supabase'
+import { useState, type FormEvent } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
 
 export default function AuthForm() {
@@ -8,41 +8,24 @@ export default function AuthForm() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const { signIn, signUp } = useAuth()
   const { toast } = useToast()
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
     setSubmitting(true)
 
-    const timeout = setTimeout(() => {
-      setSubmitting(false)
-      toast('Request timed out. Please try again.', 'error')
-    }, 10000)
+    const fn = mode === 'login' ? signIn : signUp
+    const errMsg = await fn(email, password)
 
-    try {
-      const fn = mode === 'login' ? supabase.auth.signInWithPassword : supabase.auth.signUp
-      const { error: err } = await fn({ email, password })
+    setSubmitting(false)
 
-      if (err) {
-        if (err.message === 'User already registered') {
-          setError('This email is already registered. Please log in instead.')
-          toast('Account already exists', 'error')
-        } else {
-          setError(err.message)
-          toast(err.message, 'error')
-        }
-      } else if (mode === 'signup') {
-        toast('Account created! Setting up your profile...', 'success')
-      } else {
-        toast('Signed in successfully!', 'success')
-      }
-    } catch (err: any) {
-      setError(err?.message || 'Something went wrong')
-      toast('Network error. Please try again.', 'error')
-    } finally {
-      clearTimeout(timeout)
-      setSubmitting(false)
+    if (errMsg) {
+      setError(errMsg)
+      toast(errMsg, 'error')
+    } else {
+      toast(mode === 'login' ? 'Signed in!' : 'Account created!', 'success')
     }
   }
 

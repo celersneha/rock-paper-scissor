@@ -24,12 +24,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const toast = useCallback((message: string, type: ToastType = 'info') => {
     const id = nextId++
     setToasts((prev) => [...prev, { id, message, type }])
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 4000)
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000)
   }, [])
 
-  const bg = { success: 'bg-green-600', error: 'bg-red-600', info: 'bg-indigo-600' }
+  const bg: Record<ToastType, string> = {
+    success: 'bg-green-600',
+    error: 'bg-red-600',
+    info: 'bg-indigo-600',
+  }
 
   return (
     <ToastContext.Provider value={{ toast }}>
