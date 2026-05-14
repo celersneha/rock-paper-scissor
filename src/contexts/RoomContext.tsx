@@ -135,9 +135,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
             oppName = p2?.username || 'Opponent'
           }
 
-          const wasWaiting = roomRef.current?.status === 'waiting' || !roomRef.current
-          roomRef.current = room
-
           setState((s) => ({
             ...s, room,
             myChoice, opponentChoice: oppChoice,
@@ -180,16 +177,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   async function joinExistingRoom(code: string): Promise<string | null> {
     if (!player) return 'Not logged in'
-    cleanup()
-    roomRef.current = null
-    setState({
-      room: null, playerNum: null, opponentName: '', roundTimeLeft: ROUND_TIME,
-      myChoice: null, opponentChoice: null, roundResult: null, reason: null,
-    })
-    clearSession()
     try {
       const { room, error } = await joinRoom(code, player.id)
       if (error) return error
+
+      cleanup()
+      clearSession()
       roomRef.current = room
 
       const [opponent] = await getPlayerBatch([room.player1_id])
