@@ -3,12 +3,14 @@ import { MAX_ROUNDS } from '../lib/constants'
 import { useRoom } from '../contexts/RoomContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
-import { choices, meta, type Choice } from '../lib/game'
+import { choices, meta, type Choice, type RoundResult } from '../lib/game'
 
-interface RevealData {
+type Phase = 'choosing' | 'result' | 'waiting' | 'finished'
+
+interface ResultData {
   myChoice: Choice
   opponentChoice: Choice
-  result: string
+  result: RoundResult
   reason: string | null
   round: number
 }
@@ -21,87 +23,94 @@ export default function MultiplayerGame({ onBack }: Props) {
   const { room, playerNum, opponentName, markReady, leaveRoom, makeChoice } = useRoom()
   const { player } = useAuth()
   const { toast } = useToast()
+
+  const [phase, setPhase] = useState<Phase>('choosing')
+  const [resultData, setResultData] = useState<ResultData | null>(null)
+  const [displayRound, setDisplayRound] = useState(1)
   const [localChoice, setLocalChoice] = useState<Choice | null>(null)
-  const [reveal, setReveal] = useState<RevealData | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [localReady, setLocalReady] = useState(false)
   const [countdown, setCountdown] = useState(5)
-  const revealRoundRef = useRef(0)
-  const prevRoundRef = useRef(room?.current_round ?? 0)
+  const lastResultRound = useRef(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (!room || !playerNum) return
 
-    const curRound = room.current_round
-    const round = room.rounds[curRound - 1]
-
-    if (revealRoundRef.current !== 0 && curRound !== revealRoundRef.current && !round?.result) {
-      setReveal(null)
-      setLocalReady(false)
-      setLocalChoice(null)
-      setCountdown(5)
-      revealRoundRef.current = 0
+    if (room.status === 'finished') {
+      setPhase('finished')
       return
     }
 
-    if (round?.result && revealRoundRef.current !== curRound) {
+    const curRound = room.current_round
+    const round = room.rounds[curRound - 1]
+
+    if (round?.result && lastResultRound.current !== curRound) {
       const myKey = playerNum === 1 ? 'p1_choice' : 'p2_choice'
       const oppKey = playerNum === 1 ? 'p2_choice' : 'p1_choice'
       const myC = round[myKey] as Choice | undefined
       const oppC = round[oppKey] as Choice | undefined
 
       if (myC && oppC) {
-        revealRoundRef.current = curRound
-        setReveal({
+        lastResultRound.current = curRound
+        setResultData({
           myChoice: myC, opponentChoice: oppC,
-          result: round.result!, reason: round.reason,
+          result: round.result as RoundResult,
+          reason: round.reason,
           round: curRound,
         })
-        setLocalReady(false)
+        setPhase('result')
         setCountdown(5)
+        setLocalChoice(null)
+        setSubmitting(false)
       }
+      return
     }
-  }, [room, playerNum])
+
+    if (phase === 'waiting' && curRound >= displayRound) {
+      setPhase('choosing')
+      setResultData(null)
+    }
+  }, [room, playerNum, phase, displayRound])
 
   useEffect(() => {
-    if (!reveal || localReady) return
+    if (phase !== 'result') return
+    setCountdown(5)
+    let stopped = false
 
-    timerRef.current = setInterval(() => {
+    const id = setInterval(() => {
       setCountdown((c) => {
-        if (c <= 1) {
-          if (timerRef.current) clearInterval(timerRef.current)
-          handleAutoNext()
-          return 0
-        }
+        if (c <= 1) { stopped = true; return 0 }
         return c - 1
       })
     }, 1000)
+    timerRef.current = id
 
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
+    return () => { stopped = true; clearInterval(id); timerRef.current = null }
+  }, [phase])
+
+  const autoNextFn = useRef(handleNextRound)
+  autoNextFn.current = handleNextRound
+  const prevCd = useRef(5)
+  useEffect(() => {
+    if (prevCd.current === 1 && countdown === 0 && phase === 'result') {
+      autoNextFn.current()
     }
-  }, [reveal, localReady])
+    prevCd.current = countdown
+  })
 
-  async function handleAutoNext() {
-    setLocalReady(true)
-    const err = await markReady()
-    if (err) toast(err, 'error')
+  function handleNextRound() {
+    if (timerRef.current) clearInterval(timerRef.current)
+    setPhase('waiting')
+    if (resultData) setDisplayRound(resultData.round + 1)
+    markReady().then((err) => { if (err) toast(err, 'error') })
   }
 
   async function handleChoice(c: Choice) {
-    if (localChoice || reveal) return
+    if (localChoice || phase !== 'choosing') return
     setLocalChoice(c)
     setSubmitting(true)
     await makeChoice(c)
     setSubmitting(false)
-  }
-
-  async function handleNextRound() {
-    if (timerRef.current) clearInterval(timerRef.current)
-    setLocalReady(true)
-    const err = await markReady()
-    if (err) toast(err, 'error')
   }
 
   function handleLeave() {
@@ -118,11 +127,6 @@ export default function MultiplayerGame({ onBack }: Props) {
     else if (r.result === 'p2_win') { playerNum === 2 ? acc.me++ : acc.opp++ }
     return acc
   }, { me: 0, opp: 0 })
-
-  const isFinished = room.status === 'finished'
-  const roundHasResult = reveal !== null
-  const waitingForOpponent = roundHasResult && localReady
-  const showChoices = !roundHasResult && !isFinished
 
   return (
     <div className="min-h-screen bg-surface text-text flex flex-col items-center justify-center p-4">
@@ -141,7 +145,7 @@ export default function MultiplayerGame({ onBack }: Props) {
         </div>
         <div className="text-center">
           <p className="text-xs text-text-muted mb-1">Round</p>
-          <p className="text-lg font-semibold text-text-soft">{isFinished ? MAX_ROUNDS : waitingForOpponent ? reveal!.round : room.current_round}/{MAX_ROUNDS}</p>
+          <p className="text-lg font-semibold text-text-soft">{phase === 'finished' ? MAX_ROUNDS : displayRound}/{MAX_ROUNDS}</p>
         </div>
         <div className="text-center">
           <p className="text-xs text-text-muted mb-1">{opponentLabel}</p>
@@ -149,7 +153,7 @@ export default function MultiplayerGame({ onBack }: Props) {
         </div>
       </div>
 
-      {isFinished ? (
+      {phase === 'finished' ? (
         <div className="text-center space-y-5">
           <p className="text-5xl">{scores.me > scores.opp ? '🎉' : scores.opp > scores.me ? '😞' : '🤝'}</p>
           <p className="text-3xl font-bold">{scores.me > scores.opp ? 'You win!' : scores.opp > scores.me ? `${opponentLabel} wins!` : "It's a Tie!"}</p>
@@ -168,40 +172,40 @@ export default function MultiplayerGame({ onBack }: Props) {
           </div>
           <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
         </div>
-      ) : waitingForOpponent ? (
+      ) : phase === 'waiting' && resultData ? (
         <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-md text-center space-y-6">
           <div className="flex items-center justify-center gap-8">
             <div className="text-center">
               <p className="text-xs text-text-muted mb-2">You</p>
-              <div className="text-6xl">{meta[reveal!.myChoice].emoji}</div>
-              <p className="text-sm text-text-soft mt-1 capitalize">{reveal!.myChoice}</p>
+              <div className="text-6xl">{meta[resultData.myChoice].emoji}</div>
+              <p className="text-sm text-text-soft mt-1 capitalize">{resultData.myChoice}</p>
             </div>
             <span className="text-2xl text-text-muted font-bold">VS</span>
             <div className="text-center">
               <p className="text-xs text-text-muted mb-2">{opponentLabel}</p>
-              <div className="text-6xl">{meta[reveal!.opponentChoice].emoji}</div>
-              <p className="text-sm text-text-soft mt-1 capitalize">{reveal!.opponentChoice}</p>
+              <div className="text-6xl">{meta[resultData.opponentChoice].emoji}</div>
+              <p className="text-sm text-text-soft mt-1 capitalize">{resultData.opponentChoice}</p>
             </div>
           </div>
 
           <div className={`text-2xl font-bold py-3 px-6 rounded-xl ${
-            reveal!.result === 'draw' ? 'bg-yellow/20 text-yellow' :
-            ((reveal!.result === 'p1_win' && playerNum === 1) || (reveal!.result === 'p2_win' && playerNum === 2))
+            resultData.result === 'draw' ? 'bg-yellow/20 text-yellow' :
+            ((resultData.result === 'p1_win' && playerNum === 1) || (resultData.result === 'p2_win' && playerNum === 2))
               ? 'bg-green/20 text-green' : 'bg-red/20 text-red'
           }`}>
-            {reveal!.result === 'draw' ? "It's a Draw!" :
-             ((reveal!.result === 'p1_win' && playerNum === 1) || (reveal!.result === 'p2_win' && playerNum === 2))
+            {resultData.result === 'draw' ? "It's a Draw!" :
+             ((resultData.result === 'p1_win' && playerNum === 1) || (resultData.result === 'p2_win' && playerNum === 2))
               ? 'You Won!' : `${opponentLabel} Won!`}
           </div>
 
-          {reveal!.reason && <p className="text-text-soft text-sm">{reveal!.reason}</p>}
+          {resultData.reason && <p className="text-text-soft text-sm">{resultData.reason}</p>}
 
           <div className="flex items-center justify-center gap-2 text-amber mt-4">
             <span className="inline-block w-2 h-2 bg-amber rounded-full animate-pulse" />
             <span className="text-sm">Waiting for opponent to continue...</span>
           </div>
         </div>
-      ) : showChoices ? (
+      ) : phase === 'choosing' ? (
         <>
           <div className="flex items-center gap-12 md:gap-24 mb-8 text-center">
             <div>
@@ -227,37 +231,37 @@ export default function MultiplayerGame({ onBack }: Props) {
           </div>
           <p className="text-text-soft text-sm">{localChoice ? 'Waiting for opponent...' : 'Choose your move'}</p>
         </>
-      ) : reveal && !localReady ? (
+      ) : phase === 'result' && resultData ? (
         <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-md text-center space-y-6 animate-[fadeIn_0.3s_ease-out]">
           <div className="flex items-center justify-center gap-8">
             <div className="text-center">
               <p className="text-xs text-text-muted mb-2">You</p>
-              <div className="text-6xl">{meta[reveal.myChoice].emoji}</div>
-              <p className="text-sm text-text-soft mt-1 capitalize">{reveal.myChoice}</p>
+              <div className="text-6xl">{meta[resultData.myChoice].emoji}</div>
+              <p className="text-sm text-text-soft mt-1 capitalize">{resultData.myChoice}</p>
             </div>
             <span className="text-2xl text-text-muted font-bold">VS</span>
             <div className="text-center">
               <p className="text-xs text-text-muted mb-2">{opponentLabel}</p>
-              <div className="text-6xl">{meta[reveal.opponentChoice].emoji}</div>
-              <p className="text-sm text-text-soft mt-1 capitalize">{reveal.opponentChoice}</p>
+              <div className="text-6xl">{meta[resultData.opponentChoice].emoji}</div>
+              <p className="text-sm text-text-soft mt-1 capitalize">{resultData.opponentChoice}</p>
             </div>
           </div>
 
           <div className={`text-2xl font-bold py-3 px-6 rounded-xl ${
-            reveal.result === 'draw' ? 'bg-yellow/20 text-yellow' :
-            ((reveal.result === 'p1_win' && playerNum === 1) || (reveal.result === 'p2_win' && playerNum === 2))
+            resultData.result === 'draw' ? 'bg-yellow/20 text-yellow' :
+            ((resultData.result === 'p1_win' && playerNum === 1) || (resultData.result === 'p2_win' && playerNum === 2))
               ? 'bg-green/20 text-green' : 'bg-red/20 text-red'
           }`}>
-            {reveal.result === 'draw' ? "It's a Draw!" :
-             ((reveal.result === 'p1_win' && playerNum === 1) || (reveal.result === 'p2_win' && playerNum === 2))
+            {resultData.result === 'draw' ? "It's a Draw!" :
+             ((resultData.result === 'p1_win' && playerNum === 1) || (resultData.result === 'p2_win' && playerNum === 2))
               ? 'You Won!' : `${opponentLabel} Won!`}
           </div>
 
-          {reveal.reason && <p className="text-text-soft text-sm">{reveal.reason}</p>}
+          {resultData.reason && <p className="text-text-soft text-sm">{resultData.reason}</p>}
 
           <button onClick={handleNextRound}
             className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all inline-flex items-center gap-3">
-            {reveal.round < MAX_ROUNDS ? 'Next Round' : 'See Results'}
+            {resultData.round < MAX_ROUNDS ? 'Next Round' : 'See Results'}
             <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/20 text-sm font-mono tabular-nums">{countdown}</span>
           </button>
         </div>
