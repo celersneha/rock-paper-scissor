@@ -3,7 +3,7 @@ import { MAX_ROUNDS } from '../lib/constants'
 import { useRoom } from '../contexts/RoomContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
-import { choices, meta, type Choice, type RoundResult } from '../lib/game'
+import { choices, meta, type Choice, type RoundResult, type Room } from '../lib/game'
 
 type Phase = 'choosing' | 'result' | 'waiting' | 'finished'
 
@@ -26,15 +26,65 @@ export default function MultiplayerGame({ onBack }: Props) {
 
   const [phase, setPhase] = useState<Phase>('choosing')
   const [resultData, setResultData] = useState<ResultData | null>(null)
-  const [displayRound, setDisplayRound] = useState(1)
+  const [displayRound, setDisplayRound] = useState(room?.current_round ?? 1)
   const [localChoice, setLocalChoice] = useState<Choice | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [countdown, setCountdown] = useState(5)
   const lastResultRound = useRef(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const initRef = useRef(false)
+
+  function initFromRoom(r: Room, pNum: 1 | 2) {
+    const curRound = r.current_round
+    const curData = r.rounds[curRound - 1]
+
+    if (curData?.result) {
+      const myKey = pNum === 1 ? 'p1_choice' : 'p2_choice'
+      const oppKey = pNum === 1 ? 'p2_choice' : 'p1_choice'
+      const myC = curData[myKey] as Choice | undefined
+      const oppC = curData[oppKey] as Choice | undefined
+      if (myC && oppC) {
+        lastResultRound.current = curRound
+        setDisplayRound(curRound)
+        setResultData({ myChoice: myC, opponentChoice: oppC, result: curData.result as RoundResult, reason: curData.reason, round: curRound })
+        setPhase('result')
+        setCountdown(5)
+        setLocalChoice(null)
+        return
+      }
+    }
+
+    if (curRound > 1) {
+      const prevData = r.rounds[curRound - 2]
+      if (prevData?.result) {
+        const myKey = pNum === 1 ? 'p1_choice' : 'p2_choice'
+        const oppKey = pNum === 1 ? 'p2_choice' : 'p1_choice'
+        const myC = prevData[myKey] as Choice | undefined
+        const oppC = prevData[oppKey] as Choice | undefined
+        if (myC && oppC) {
+          lastResultRound.current = curRound - 1
+          setDisplayRound(curRound - 1)
+          setResultData({ myChoice: myC, opponentChoice: oppC, result: prevData.result as RoundResult, reason: prevData.reason, round: curRound - 1 })
+          setPhase('result')
+          setCountdown(5)
+          setLocalChoice(null)
+          return
+        }
+      }
+    }
+
+    setDisplayRound(curRound)
+    setPhase('choosing')
+  }
 
   useEffect(() => {
     if (!room || !playerNum) return
+
+    if (!initRef.current) {
+      initRef.current = true
+      initFromRoom(room, playerNum)
+      return
+    }
 
     if (room.status === 'finished') {
       setPhase('finished')
