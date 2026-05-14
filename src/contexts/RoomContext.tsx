@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import {
-  createRoom, joinRoom, submitChoice, resolveRound, getPlayerBatch, getRoom,
+  createRoom, joinRoom, submitChoice, resolveRound, advanceRound, getPlayerBatch, getRoom,
 } from '../lib/api'
 import type { Room, Choice, RoundData, RoundResult } from '../lib/game'
 import { MAX_ROUNDS } from '../lib/constants'
@@ -23,6 +23,7 @@ interface RoomContextValue extends RoomState {
   joinExistingRoom: (code: string) => Promise<string | null>
   leaveRoom: () => void
   makeChoice: (choice: Choice) => Promise<void>
+  advanceToNextRound: () => Promise<string | null>
 }
 
 const RoomContext = createContext<RoomContextValue>(null!)
@@ -82,21 +83,19 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         const myChoice = round?.[pNum === 1 ? 'p1_choice' : 'p2_choice'] as Choice | null
         const oppChoice = round?.[pNum === 1 ? 'p2_choice' : 'p1_choice'] as Choice | null
 
-        setState((s) => {
-          let oppName = s.opponentName
-          if (updated.status === 'playing' && pNum === 1 && updated.player2_id && !oppName) {
-            getPlayerBatch([updated.player2_id]).then(([p2]) => {
-              if (p2?.username) setState((s2) => ({ ...s2, opponentName: p2.username }))
-            })
-          }
-          return {
-            ...s, room: updated,
-            myChoice: myChoice ?? s.myChoice,
-            opponentChoice: oppChoice ?? s.opponentChoice,
-            roundResult: round?.result ?? s.roundResult,
-            reason: round?.reason ?? s.reason,
-          }
-        })
+        if (updated.status === 'playing' && pNum === 1 && updated.player2_id) {
+          getPlayerBatch([updated.player2_id]).then(([p2]) => {
+            if (p2?.username) setState((s) => ({ ...s, opponentName: p2.username }))
+          })
+        }
+
+        setState((s) => ({
+          ...s, room: updated,
+          myChoice: myChoice ?? s.myChoice,
+          opponentChoice: oppChoice ?? s.opponentChoice,
+          roundResult: round?.result ?? s.roundResult,
+          reason: round?.reason ?? s.reason,
+        }))
 
       } catch { }
     }, 1000)
@@ -224,7 +223,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, [player])
 
   useEffect(() => {
-    return () => { cleanup(); clearSession() }
+    return () => { cleanup() }
   }, [])
 
   async function makeChoice(choice: Choice) {
@@ -240,20 +239,33 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
     for (let i = 0; i < 15; i++) {
       await new Promise((r) => setTimeout(r, 200))
-      const r = roomRef.current?.rounds?.[room.current_round - 1]
+      const cur = roomRef.current
+      if (!cur) return
+      const r = cur.rounds?.[cur.current_round - 1]
       if (r?.[myKey] && r?.[oppKey]) {
         const c1 = r.p1_choice!
         const c2 = r.p2_choice!
-        const isLast = room.current_round >= MAX_ROUNDS
-        await resolveRound(room.id, room.current_round, c1, c2, room.current_round + 1, isLast)
+        await resolveRound(cur.id, cur.current_round, c1, c2)
         return
       }
     }
   }
 
+  async function advanceToNextRound(): Promise<string | null> {
+    const room = roomRef.current
+    if (!room) return 'No active room'
+    try {
+      const updated = await advanceRound(room.id)
+      roomRef.current = updated
+      return null
+    } catch (err: any) {
+      return err?.message || 'Failed to advance'
+    }
+  }
+
   return (
     <RoomContext.Provider value={{
-      ...state, createNewRoom, joinExistingRoom, leaveRoom, makeChoice,
+      ...state, createNewRoom, joinExistingRoom, leaveRoom, makeChoice, advanceToNextRound,
     }}>
       {children}
     </RoomContext.Provider>

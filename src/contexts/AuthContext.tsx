@@ -35,29 +35,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    let mounted = true
+
     supabase.auth.getUser().then(({ data }) => {
+      if (!mounted) return
       if (data.user) {
         getPlayer(data.user.id)
-          .then((p) => setState({ user: data.user, player: p, loading: false }))
-          .catch(() => setState({ user: data.user, player: null, loading: false }))
+          .then((p) => { if (mounted) setState({ user: data.user, player: p, loading: false }) })
+          .catch(() => { if (mounted) setState({ user: data.user, player: null, loading: false }) })
       } else {
-        setState({ user: null, player: null, loading: false })
+        if (mounted) setState({ user: null, player: null, loading: false })
       }
     })
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user ?? null
+      if (!mounted) return
       if (u) {
-        setState((s) => ({ ...s, user: u, loading: true }))
+        setState((s) => ({ ...s, user: u }))
         getPlayer(u.id)
-          .then((p) => setState({ user: u, player: p, loading: false }))
-          .catch(() => setState({ user: u, player: null, loading: false }))
+          .then((p) => { if (mounted) setState((s) => ({ ...s, player: p })) })
+          .catch(() => { if (mounted) setState((s) => ({ ...s, player: null })) })
       } else {
         setState({ user: null, player: null, loading: false })
       }
     })
 
-    return () => listener.subscription.unsubscribe()
+    return () => {
+      mounted = false
+      listener.subscription.unsubscribe()
+    }
   }, [])
 
   async function authAction(fn: () => Promise<{ error: unknown }>): Promise<string | null> {

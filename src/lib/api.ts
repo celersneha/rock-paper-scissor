@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { SUPABASE_URL, SUPABASE_ANON_KEY, REQUEST_TIMEOUT } from './constants'
+import { SUPABASE_URL, SUPABASE_ANON_KEY, REQUEST_TIMEOUT, MAX_ROUNDS } from './constants'
 import { supabase } from './supabase'
 import { getRoundResult, getReason, type Room, type RoundData, type Choice } from './game'
 
@@ -102,7 +102,7 @@ export async function submitChoice(roomId: string, playerNum: 1 | 2, round: numb
   await api.patch('/rooms', { rounds }, { params: { id: `eq.${roomId}` } })
 }
 
-export async function resolveRound(roomId: string, round: number, choice1: Choice, choice2: Choice, nextRound: number, isLast: boolean): Promise<void> {
+export async function resolveRound(roomId: string, round: number, choice1: Choice, choice2: Choice): Promise<void> {
   const result = getRoundResult(choice1, choice2)
   const reason = getReason(choice1, choice2)
 
@@ -121,24 +121,25 @@ export async function resolveRound(roomId: string, round: number, choice1: Choic
   }
 
   const update: Record<string, unknown> = { rounds }
-  if (result === 'p1_win') update.winner_id = current[0].player1_id
-  else if (result === 'p2_win') update.winner_id = current[0].player2_id
-
-  if (isLast) {
-    update.status = 'finished'
-  } else {
-    update.current_round = nextRound
-    update.round_started_at = new Date().toISOString()
-    update.p1_ready = false
-    update.p2_ready = false
-  }
 
   await api.patch('/rooms', update, { params: { id: `eq.${roomId}` } })
 }
 
-export async function markRoundReady(roomId: string, playerNum: 1 | 2): Promise<void> {
-  const field = playerNum === 1 ? 'p1_ready' : 'p2_ready'
-  await api.patch('/rooms', { [field]: true }, { params: { id: `eq.${roomId}` } })
+export async function advanceRound(roomId: string): Promise<Room> {
+  const { data: current } = await api.get<Room[]>('/rooms', {
+    params: { id: `eq.${roomId}`, select: 'current_round,status' },
+  })
+  if (!current?.length) throw new Error('Room not found')
+
+  const cur = current[0]
+  const isLast = cur.current_round >= MAX_ROUNDS
+  const update: Record<string, unknown> = isLast
+    ? { status: 'finished' }
+    : { current_round: cur.current_round + 1 }
+
+  const { data } = await api.patch<Room[]>('/rooms', update, { params: { id: `eq.${roomId}` } })
+  if (!data?.length) throw new Error('Failed to advance round')
+  return data[0]
 }
 
 export async function getPlayerBatch(ids: string[]): Promise<Player[]> {

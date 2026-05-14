@@ -1,41 +1,68 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { MAX_ROUNDS } from '../lib/constants'
 import { useRoom } from '../contexts/RoomContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
 import { choices, meta, type Choice } from '../lib/game'
 
-type PickPhase = 'choosing' | 'round_result' | 'finished'
+interface RevealData {
+  myChoice: Choice
+  opponentChoice: Choice
+  result: string
+  reason: string | null
+  round: number
+}
 
 interface Props {
   onBack?: () => void
 }
 
 export default function MultiplayerGame({ onBack }: Props) {
-  const { room, playerNum, opponentName, myChoice, opponentChoice, roundResult, reason, leaveRoom, makeChoice } = useRoom()
+  const { room, playerNum, opponentName, advanceToNextRound, leaveRoom, makeChoice } = useRoom()
   const { player } = useAuth()
   const { toast } = useToast()
-  const [pickPhase, setPickPhase] = useState<PickPhase>('choosing')
   const [localChoice, setLocalChoice] = useState<Choice | null>(null)
+  const [reveal, setReveal] = useState<RevealData | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const prevRoundRef = useRef(room?.current_round ?? 0)
+  const revealRoundRef = useRef(0)
 
   useEffect(() => {
-    if (!room) return
-    if (room.status === 'finished') { setPickPhase('finished'); return }
+    if (!room || !playerNum) return
 
-    if (roundResult) {
-      setPickPhase('round_result')
+    const curRound = room.current_round
+    const round = room.rounds[curRound - 1]
+
+    if (round?.result && revealRoundRef.current !== curRound) {
+      const myKey = playerNum === 1 ? 'p1_choice' : 'p2_choice'
+      const oppKey = playerNum === 1 ? 'p2_choice' : 'p1_choice'
+      const myC = round[myKey] as Choice | undefined
+      const oppC = round[oppKey] as Choice | undefined
+
+      if (myC && oppC) {
+        revealRoundRef.current = curRound
+        setReveal({
+          myChoice: myC, opponentChoice: oppC,
+          result: round.result!, reason: round.reason,
+          round: curRound,
+        })
+      }
     }
-  }, [room, roundResult])
+  }, [room, playerNum])
 
-  function handleChoice(c: Choice) {
-    if (pickPhase !== 'choosing') return
+  async function handleChoice(c: Choice) {
+    if (localChoice || reveal) return
     setLocalChoice(c)
-    makeChoice(c)
+    setSubmitting(true)
+    await makeChoice(c)
+    setSubmitting(false)
   }
 
-  function handleNext() {
+  async function handleNextRound() {
     setLocalChoice(null)
-    setPickPhase('choosing')
+    setReveal(null)
+    const err = await advanceToNextRound()
+    if (err) toast(err, 'error')
   }
 
   function handleLeave() {
@@ -53,7 +80,7 @@ export default function MultiplayerGame({ onBack }: Props) {
     else if (r.result === 'p2_win') { if (playerNum === 2) scores.me++; else scores.opp++ }
   })
 
-  const isFinished = pickPhase === 'finished'
+  const isFinished = room.status === 'finished'
 
   return (
     <div className="min-h-screen bg-surface text-text flex flex-col items-center justify-center p-4">
@@ -72,7 +99,7 @@ export default function MultiplayerGame({ onBack }: Props) {
         </div>
         <div className="text-center">
           <p className="text-xs text-text-muted mb-1">Round</p>
-          <p className="text-lg font-semibold text-text-soft">{isFinished ? MAX_ROUNDS : room.current_round}/{MAX_ROUNDS}</p>
+          <p className="text-lg font-semibold text-text-soft">{room.current_round}/{MAX_ROUNDS}</p>
         </div>
         <div className="text-center">
           <p className="text-xs text-text-muted mb-1">{opponentLabel}</p>
@@ -80,49 +107,42 @@ export default function MultiplayerGame({ onBack }: Props) {
         </div>
       </div>
 
-      <div className="flex items-center gap-12 md:gap-24 mb-8 text-center">
-        <div>
-          <p className="text-text-soft text-xs mb-2">You</p>
-          <div className="text-7xl min-w-[5rem]">
-            {localChoice || myChoice ? meta[(localChoice || myChoice)!].emoji : '❔'}
+      {reveal ? (
+        <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-md text-center space-y-6 animate-[fadeIn_0.3s_ease-out]">
+          <div className="flex items-center justify-center gap-8">
+            <div className="text-center">
+              <p className="text-xs text-text-muted mb-2">You</p>
+              <div className="text-6xl">{meta[reveal.myChoice].emoji}</div>
+              <p className="text-sm text-text-soft mt-1 capitalize">{reveal.myChoice}</p>
+            </div>
+            <span className="text-2xl text-text-muted font-bold">VS</span>
+            <div className="text-center">
+              <p className="text-xs text-text-muted mb-2">{opponentLabel}</p>
+              <div className="text-6xl">{meta[reveal.opponentChoice].emoji}</div>
+              <p className="text-sm text-text-soft mt-1 capitalize">{reveal.opponentChoice}</p>
+            </div>
           </div>
-        </div>
-        <span className="text-2xl text-text-muted font-bold">VS</span>
-        <div>
-          <p className="text-text-soft text-xs mb-2">{opponentLabel}</p>
-          <div className="text-7xl min-w-[5rem]">
-            {pickPhase === 'round_result' && opponentChoice ? meta[opponentChoice].emoji : '❔'}
-          </div>
-        </div>
-      </div>
 
-      {pickPhase === 'round_result' && roundResult && (
-        <div className="text-center space-y-3 mb-4">
-          <p className={`text-2xl font-bold ${roundResult === 'draw' ? 'text-yellow' : ((roundResult === 'p1_win' && playerNum === 1) || (roundResult === 'p2_win' && playerNum === 2)) ? 'text-green' : 'text-red'}`}>
-            {roundResult === 'draw' ? "It's a Draw!" : ((roundResult === 'p1_win' && playerNum === 1) || (roundResult === 'p2_win' && playerNum === 2)) ? 'You Win!' : `${opponentLabel} Wins!`}
-          </p>
-          {reason && <p className="text-text-soft text-sm">{reason}</p>}
-          <button onClick={handleNext} className="bg-indigo hover:opacity-90 px-8 py-2 rounded-xl font-semibold transition-all">
+          <div className={`text-2xl font-bold py-3 px-6 rounded-xl ${
+            reveal.result === 'draw' ? 'bg-yellow/20 text-yellow' :
+            ((reveal.result === 'p1_win' && playerNum === 1) || (reveal.result === 'p2_win' && playerNum === 2))
+              ? 'bg-green/20 text-green' : 'bg-red/20 text-red'
+          }`}>
+            {reveal.result === 'draw' ? "It's a Draw!" :
+             ((reveal.result === 'p1_win' && playerNum === 1) || (reveal.result === 'p2_win' && playerNum === 2))
+              ? 'You Won!' : `${opponentLabel} Won!`}
+          </div>
+
+          {reveal.reason && (
+            <p className="text-text-soft text-sm">{reveal.reason}</p>
+          )}
+
+          <button onClick={handleNextRound}
+            className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">
             {room.current_round < MAX_ROUNDS ? 'Next Round →' : 'See Results →'}
           </button>
         </div>
-      )}
-
-      {pickPhase === 'choosing' && (
-        <>
-          <div className="flex gap-4 mb-4">
-            {choices.map((c) => (
-              <button key={c} onClick={() => handleChoice(c)} disabled={!!localChoice}
-                className={`relative text-5xl rounded-2xl p-5 transition-all ${localChoice === c ? `bg-gradient-to-b ${meta[c].color} scale-110` : !localChoice ? 'bg-surface-over hover:bg-surface-hover hover:scale-105' : 'bg-surface-over/50 opacity-30'} disabled:cursor-not-allowed`}>
-                {meta[c].emoji}
-              </button>
-            ))}
-          </div>
-          <p className="text-text-soft text-sm">{localChoice || myChoice ? 'Waiting for opponent...' : 'Choose your move'}</p>
-        </>
-      )}
-
-      {isFinished ? (
+      ) : isFinished ? (
         <div className="text-center space-y-5">
           <p className="text-5xl">{scores.me > scores.opp ? '🎉' : scores.opp > scores.me ? '😞' : '🤝'}</p>
           <p className="text-3xl font-bold">{scores.me > scores.opp ? 'You win!' : scores.opp > scores.me ? `${opponentLabel} wins!` : "It's a Tie!"}</p>
@@ -141,7 +161,33 @@ export default function MultiplayerGame({ onBack }: Props) {
           </div>
           <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
         </div>
-      ) : null}
+      ) : (
+        <>
+          <div className="flex items-center gap-12 md:gap-24 mb-8 text-center">
+            <div>
+              <p className="text-text-soft text-xs mb-2">You</p>
+              <div className="text-7xl min-w-[5rem]">
+                {localChoice ? meta[localChoice].emoji : '❔'}
+              </div>
+            </div>
+            <span className="text-2xl text-text-muted font-bold">VS</span>
+            <div>
+              <p className="text-text-soft text-xs mb-2">{opponentLabel}</p>
+              <div className="text-7xl min-w-[5rem]">❔</div>
+            </div>
+          </div>
+
+          <div className="flex gap-4 mb-4">
+            {choices.map((c) => (
+              <button key={c} onClick={() => handleChoice(c)} disabled={!!localChoice || submitting}
+                className={`relative text-5xl rounded-2xl p-5 transition-all ${localChoice === c ? `bg-gradient-to-b ${meta[c].color} scale-110` : !localChoice ? 'bg-surface-over hover:bg-surface-hover hover:scale-105' : 'bg-surface-over/50 opacity-30'} disabled:cursor-not-allowed`}>
+                {meta[c].emoji}
+              </button>
+            ))}
+          </div>
+          <p className="text-text-soft text-sm">{localChoice ? 'Waiting for opponent...' : 'Choose your move'}</p>
+        </>
+      )}
     </div>
   )
 }
