@@ -20,7 +20,7 @@ interface Props {
 }
 
 export default function MultiplayerGame({ onBack }: Props) {
-  const { room, playerNum, opponentName, markReady, leaveRoom, makeChoice } = useRoom()
+  const { room, playerNum, opponentName, opponentLeft, markReady, leaveRoom, makeChoice } = useRoom()
   const { player } = useAuth()
   const { toast } = useToast()
 
@@ -163,8 +163,8 @@ export default function MultiplayerGame({ onBack }: Props) {
     setSubmitting(false)
   }
 
-  function handleLeave() {
-    leaveRoom()
+  async function handleLeave() {
+    await leaveRoom()
     toast('Left the game', 'info')
     onBack?.()
   }
@@ -204,24 +204,33 @@ export default function MultiplayerGame({ onBack }: Props) {
       </div>
 
       {phase === 'finished' ? (
-        <div className="text-center space-y-5">
-          <p className="text-5xl">{scores.me > scores.opp ? '🎉' : scores.opp > scores.me ? '😞' : '🤝'}</p>
-          <p className="text-3xl font-bold">{scores.me > scores.opp ? 'You win!' : scores.opp > scores.me ? `${opponentLabel} wins!` : "It's a Tie!"}</p>
-          <p className="text-text-soft">{scores.me} - {scores.opp}</p>
-          <div className="max-w-xs mx-auto space-y-1">
-            {room.rounds.map((r, i) => (
-              <div key={i} className="flex items-center justify-between bg-surface-over/50 rounded-xl px-4 py-2 text-sm">
-                <span className="text-text-muted">R{r.round}</span>
-                <span className="text-lg">{r.p1_choice ? meta[r.p1_choice].emoji : '❓'}</span>
-                <span className={`font-medium ${r.result === 'p1_win' ? 'text-green' : r.result === 'p2_win' ? 'text-red' : 'text-yellow'}`}>
-                  {r.result === 'p1_win' ? 'P1' : r.result === 'p2_win' ? 'P2' : '—'}
-                </span>
-                <span className="text-lg">{r.p2_choice ? meta[r.p2_choice].emoji : '❓'}</span>
-              </div>
-            ))}
+        opponentLeft ? (
+          <div className="text-center space-y-5">
+            <p className="text-5xl">👋</p>
+            <p className="text-3xl font-bold">{opponentLabel} has left the game</p>
+            <p className="text-text-soft">Score: {scores.me} - {scores.opp}</p>
+            <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
           </div>
-          <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
-        </div>
+        ) : (
+          <div className="text-center space-y-5">
+            <p className="text-5xl">{scores.me > scores.opp ? '🎉' : scores.opp > scores.me ? '😞' : '🤝'}</p>
+            <p className="text-3xl font-bold">{scores.me > scores.opp ? 'You win!' : scores.opp > scores.me ? `${opponentLabel} wins!` : "It's a Tie!"}</p>
+            <p className="text-text-soft">{scores.me} - {scores.opp}</p>
+            <div className="max-w-xs mx-auto space-y-1">
+              {room.rounds.map((r, i) => (
+                <div key={i} className="flex items-center justify-between bg-surface-over/50 rounded-xl px-4 py-2 text-sm">
+                  <span className="text-text-muted">R{r.round}</span>
+                  <span className="text-lg">{r.p1_choice ? meta[r.p1_choice].emoji : '❓'}</span>
+                  <span className={`font-medium ${r.result === 'p1_win' ? 'text-green' : r.result === 'p2_win' ? 'text-red' : 'text-yellow'}`}>
+                    {r.result === 'p1_win' ? 'P1' : r.result === 'p2_win' ? 'P2' : '—'}
+                  </span>
+                  <span className="text-lg">{r.p2_choice ? meta[r.p2_choice].emoji : '❓'}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={handleLeave} className="bg-indigo hover:opacity-90 px-10 py-3 rounded-xl font-semibold transition-all">Back to Menu</button>
+          </div>
+        )
       ) : phase === 'waiting' && resultData ? (
         <div className="bg-surface-raised rounded-2xl p-8 w-full max-w-md text-center space-y-6">
           <div className="flex items-center justify-center gap-8">

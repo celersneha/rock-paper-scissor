@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import {
-  createRoom, joinRoom, submitChoice, resolveRound, setPlayerReady, getPlayerBatch, getRoom,
+  createRoom, joinRoom, submitChoice, resolveRound, setPlayerReady, getPlayerBatch, getRoom, abandonRoom,
 } from '../lib/api'
 import type { Room, Choice, RoundData, RoundResult } from '../lib/game'
 import { MAX_ROUNDS } from '../lib/constants'
@@ -16,6 +16,7 @@ interface RoomState {
   opponentChoice: Choice | null
   roundResult: RoundResult | null
   reason: string | null
+  opponentLeft: boolean
 }
 
 interface RoomContextValue extends RoomState {
@@ -61,6 +62,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<RoomState>({
     room: null, playerNum: null, opponentName: '',
     myChoice: null, opponentChoice: null, roundResult: null, reason: null,
+    opponentLeft: false,
   })
 
   function cleanup() {
@@ -124,12 +126,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
             oppName = p2?.username || 'Opponent'
           }
 
+          const lastRoundResult = room.rounds?.[room.current_round - 1]?.result
+          const isNormalFinish = room.status === 'finished' && (room.current_round >= MAX_ROUNDS || !!lastRoundResult)
+          const isOpponentLeft = room.status === 'finished' && !isNormalFinish
+
+          if (isOpponentLeft) {
+            toast('Your opponent has left the game', 'error')
+          }
+
           setState((s) => ({
             ...s, room,
             myChoice, opponentChoice: oppChoice,
             roundResult: round?.result ?? null,
             reason: round?.reason ?? null,
             opponentName: oppName || s.opponentName,
+            opponentLeft: isOpponentLeft,
           }))
 
         }
@@ -148,6 +159,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       setState({
         room, playerNum: 1, opponentName: '',
         myChoice: null, opponentChoice: null, roundResult: null, reason: null,
+        opponentLeft: false,
       })
       saveSession(room.id, 1)
       subscribe(room.id, 1)
@@ -172,6 +184,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         room, playerNum: 2, opponentName: opponent?.username || 'Opponent',
         myChoice: null, opponentChoice: null,
         roundResult: null, reason: null,
+        opponentLeft: false,
       })
       saveSession(room.id, 2)
       subscribe(room.id, 2)
@@ -181,7 +194,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function leaveRoom() {
+  async function leaveRoom() {
+    const currentRoom = roomRef.current
+    if (currentRoom?.status === 'playing') {
+      try { await abandonRoom(currentRoom.id) } catch {}
+    }
     cleanup()
     clearSession()
     roomRef.current = null
@@ -189,6 +206,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setState({
       room: null, playerNum: null, opponentName: '',
       myChoice: null, opponentChoice: null, roundResult: null, reason: null,
+      opponentLeft: false,
     })
   }
 
@@ -216,6 +234,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           room, playerNum: pNum, opponentName: oppName,
           myChoice: null, opponentChoice: null,
           roundResult: null, reason: null,
+          opponentLeft: false,
         })
         subscribe(room.id, pNum)
       } catch { clearSession() }

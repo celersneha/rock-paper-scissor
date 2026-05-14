@@ -172,3 +172,7 @@ export async function getPlayerBatch(ids: string[]): Promise<Player[]> {
   })
   return data ?? []
 }
+
+export async function abandonRoom(roomId: string): Promise<void> {
+  await api.patch('/rooms', { status: 'finished' }, { params: { id: `eq.${roomId}` } })
+}
