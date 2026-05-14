@@ -12,13 +12,31 @@ export interface Player {
   created_at: string
 }
 
+export class ApiError extends Error {
+  constructor(message: string, public original?: unknown) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms = 10000): Promise<T> {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new ApiError('Request timed out')), ms)
+  )
+  return Promise.race([promise, timeout])
+}
+
 export async function getPlayer(userId: string): Promise<Player | null> {
-  const { data } = await supabase
-    .from('players')
-    .select('*')
-    .eq('id', userId)
-    .single()
-  return data
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('players').select('*').eq('id', userId).single()
+    )
+    if (error && error.code !== 'PGRST116') throw new ApiError(error.message, error)
+    return data
+  } catch (err) {
+    if (err instanceof ApiError) throw err
+    throw new ApiError('Failed to load player data')
+  }
 }
 
 export async function createPlayer(
@@ -26,20 +44,27 @@ export async function createPlayer(
   email: string,
   username: string
 ): Promise<Player> {
-  const { data, error } = await supabase
-    .from('players')
-    .insert({ id: userId, email, username })
-    .select()
-    .single()
-
-  if (error) throw error
-  return data
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('players').insert({ id: userId, email, username }).select().single()
+    )
+    if (error) throw new ApiError(error.message, error)
+    return data
+  } catch (err) {
+    if (err instanceof ApiError) throw err
+    throw new ApiError('Failed to create player')
+  }
 }
 
-export async function isUsernameTaken(username: string): Promise<boolean> {
-  const { count } = await supabase
-    .from('players')
-    .select('*', { count: 'exact', head: true })
-    .eq('username', username)
-  return (count ?? 0) > 0
+export async function checkUsernameAvailable(username: string): Promise<boolean> {
+  try {
+    const { data, error } = await withTimeout(
+      supabase.rpc('check_username_available', { username })
+    )
+    if (error) throw new ApiError(error.message, error)
+    return data as boolean
+  } catch (err) {
+    if (err instanceof ApiError) throw err
+    throw new ApiError('Failed to check username')
+  }
 }

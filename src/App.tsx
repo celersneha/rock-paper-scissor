@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { supabase, getPlayer, type Player } from './supabase'
+import { ToastProvider } from './Toast'
 import AuthForm from './AuthForm'
 import UsernameSetup from './UsernameSetup'
 import Game from './Game'
@@ -27,8 +28,12 @@ export default function App() {
   }, [])
 
   async function checkPlayer(u: User) {
-    const p = await getPlayer(u.id)
-    setPlayer(p)
+    try {
+      const p = await getPlayer(u.id)
+      setPlayer(p)
+    } catch {
+      setPlayer(null)
+    }
     setLoading(false)
   }
 
@@ -40,7 +45,9 @@ export default function App() {
     )
   }
 
-  if (!user) return <AuthForm />
-  if (!player) return <UsernameSetup user={user} onComplete={(p) => setPlayer(p)} />
-  return <Game player={player} />
+  return (
+    <ToastProvider>
+      {!user ? <AuthForm /> : !player ? <UsernameSetup user={user} onComplete={(p) => setPlayer(p)} /> : <Game player={player} />}
+    </ToastProvider>
+  )
 }

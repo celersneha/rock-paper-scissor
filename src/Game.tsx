@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase, type Player } from './supabase'
+import { useToast } from './Toast'
 
 type Choice = 'rock' | 'paper' | 'scissors'
 type Result = 'win' | 'lose' | 'draw'
@@ -58,6 +59,7 @@ export default function Game({ player }: Props) {
   const [roundHistory, setRoundHistory] = useState<
     { round: number; player: Choice; computer: Choice; result: Result }[]
   >([])
+  const { toast } = useToast()
 
   function play(pick: Choice) {
     const comp = getComputerChoice()
@@ -95,6 +97,13 @@ export default function Game({ player }: Props) {
     setComputerChoice(null)
     setResult(null)
     setRoundHistory([])
+    toast('New game started!', 'info')
+  }
+
+  function handleLogout() {
+    supabase.auth.signOut().catch(() => {
+      toast('Failed to sign out', 'error')
+    })
   }
 
   const overall = phase === 'finished' ? determineOverall(playerScore, computerScore) : null
@@ -104,7 +113,7 @@ export default function Game({ player }: Props) {
       <div className="absolute top-4 right-4 flex items-center gap-3">
         <span className="text-sm text-indigo-400 font-medium">{player.username}</span>
         <button
-          onClick={() => supabase.auth.signOut()}
+          onClick={handleLogout}
           className="bg-gray-800 hover:bg-gray-700 text-sm px-4 py-2 rounded-lg transition-colors"
         >
           Logout

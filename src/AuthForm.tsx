@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
+import { useToast } from './Toast'
 
 export default function AuthForm() {
   const [email, setEmail] = useState('')
@@ -7,22 +8,41 @@ export default function AuthForm() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const { toast } = useToast()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setSubmitting(true)
 
-    const fn = mode === 'login' ? supabase.auth.signInWithPassword : supabase.auth.signUp
-    const { error: err } = await fn({ email, password })
-    setSubmitting(false)
+    const timeout = setTimeout(() => {
+      setSubmitting(false)
+      toast('Request timed out. Please try again.', 'error')
+    }, 10000)
 
-    if (err) {
-      if (err.message === 'User already registered') {
-        setError('This email is already registered. Please log in instead.')
+    try {
+      const fn = mode === 'login' ? supabase.auth.signInWithPassword : supabase.auth.signUp
+      const { error: err } = await fn({ email, password })
+
+      if (err) {
+        if (err.message === 'User already registered') {
+          setError('This email is already registered. Please log in instead.')
+          toast('Account already exists', 'error')
+        } else {
+          setError(err.message)
+          toast(err.message, 'error')
+        }
+      } else if (mode === 'signup') {
+        toast('Account created! Setting up your profile...', 'success')
       } else {
-        setError(err.message)
+        toast('Signed in successfully!', 'success')
       }
+    } catch (err: any) {
+      setError(err?.message || 'Something went wrong')
+      toast('Network error. Please try again.', 'error')
+    } finally {
+      clearTimeout(timeout)
+      setSubmitting(false)
     }
   }
 
@@ -43,7 +63,8 @@ export default function AuthForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+            disabled={submitting}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
           />
           <input
             type="password"
@@ -52,7 +73,8 @@ export default function AuthForm() {
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={6}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+            disabled={submitting}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
           />
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -60,8 +82,11 @@ export default function AuthForm() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg py-2.5 font-semibold transition-colors"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg py-2.5 font-semibold transition-colors flex items-center justify-center gap-2"
           >
+            {submitting && (
+              <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            )}
             {submitting ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Sign Up'}
           </button>
         </form>
@@ -70,7 +95,8 @@ export default function AuthForm() {
           {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
           <button
             onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError('') }}
-            className="text-indigo-400 hover:underline"
+            disabled={submitting}
+            className="text-indigo-400 hover:underline disabled:opacity-50"
           >
             {mode === 'login' ? 'Sign Up' : 'Sign In'}
           </button>
