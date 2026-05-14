@@ -42,7 +42,7 @@ function ModeSelectRouter() {
     } catch {}
   }
 
-  if (mode === 'singleplayer') return <SingleplayerGame />
+  if (mode === 'singleplayer') return <SingleplayerGame onBack={() => handleSelect('select')} />
 
   if (mode === 'multiplayer') {
     return (

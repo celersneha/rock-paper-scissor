@@ -6,7 +6,11 @@ import { choices, meta, getComputerChoice, getResult, type Choice } from '../lib
 
 type Phase = 'pick' | 'result' | 'finished'
 
-export default function SingleplayerGame() {
+interface Props {
+  onBack?: () => void
+}
+
+export default function SingleplayerGame({ onBack }: Props) {
   const { player, signOut } = useAuth()
   const { toast } = useToast()
   const [phase, setPhase] = useState<Phase>('pick')
@@ -41,9 +45,12 @@ export default function SingleplayerGame() {
 
   return (
     <div className="min-h-screen bg-surface text-text flex flex-col items-center justify-center p-4">
-      <div className="absolute top-4 right-4 flex items-center gap-3">
-        <span className="text-sm text-text-soft">{player?.username}</span>
-        <button onClick={signOut} className="bg-surface-hover hover:opacity-80 text-sm px-4 py-2 rounded-xl transition-all">Logout</button>
+      <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
+        <button onClick={onBack} className="text-text-soft hover:text-text text-sm transition-colors">← Back</button>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-text-soft">{player?.username}</span>
+          <button onClick={signOut} className="bg-surface-hover hover:opacity-80 text-sm px-4 py-2 rounded-xl transition-all">Logout</button>
+        </div>
       </div>
 
       <h1 className="text-4xl font-extrabold mb-1">Rock <span className="text-amber">Paper</span> Scissors</h1>
