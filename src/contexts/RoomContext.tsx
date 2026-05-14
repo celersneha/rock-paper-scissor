@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import {
-  createRoom, joinRoom, submitChoice, resolveRound, getPlayerBatch,
+  createRoom, joinRoom, submitChoice, resolveRound, getPlayerBatch, getRoom,
 } from '../lib/api'
 import type { Room, Choice, RoundData, RoundResult } from '../lib/game'
 import { MAX_ROUNDS, ROUND_TIME } from '../lib/constants'
@@ -35,6 +35,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast()
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const roomRef = useRef<Room | null>(null)
 
   const [state, setState] = useState<RoomState>({
@@ -46,6 +47,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   function cleanup() {
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
   }
 
   const setTimer = useCallback((startedAt: string | null) => {
@@ -89,8 +91,30 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         }
       )
       .subscribe()
-
     channelRef.current = channel
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const room = await getRoom(roomId)
+        if (!room) return
+        roomRef.current = room
+
+        const round = room.rounds?.[room.current_round - 1]
+        const myChoice = round?.[pNum === 1 ? 'p1_choice' : 'p2_choice'] as Choice | null
+        const oppChoice = round?.[pNum === 1 ? 'p2_choice' : 'p1_choice'] as Choice | null
+
+        setState((s) => ({
+          ...s, room,
+          myChoice, opponentChoice: oppChoice,
+          roundResult: round?.result ?? null,
+          reason: round?.reason ?? null,
+        }))
+
+        if (room.status === 'playing') {
+          setTimer(room.round_started_at)
+        }
+      } catch { /* polling silently */ }
+    }, 1500)
   }
 
   async function createNewRoom(): Promise<string | null> {

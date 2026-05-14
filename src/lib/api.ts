@@ -134,6 +134,13 @@ export async function markRoundReady(roomId: string, playerNum: 1 | 2): Promise<
   await api.patch('/rooms', { [field]: true }, { params: { id: `eq.${roomId}` } })
 }
 
+export async function getRoom(roomId: string): Promise<Room | null> {
+  const { data } = await api.get<Room[]>('/rooms', {
+    params: { id: `eq.${roomId}`, select: '*' },
+  })
+  return data?.[0] ?? null
+}
+
 export async function getPlayerBatch(ids: string[]): Promise<Player[]> {
   if (!ids.length) return []
   const { data } = await api.get<Player[]>('/players', {

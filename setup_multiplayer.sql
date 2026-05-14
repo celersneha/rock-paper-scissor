@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE rooms REPLICA IDENTITY FULL;
 ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Players can read their rooms"
