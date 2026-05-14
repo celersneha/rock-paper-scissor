@@ -7,7 +7,11 @@ import { choices, meta, type Choice } from '../lib/game'
 
 type PickPhase = 'waiting' | 'choosing' | 'reveal' | 'round_result' | 'finished'
 
-export default function MultiplayerGame() {
+interface Props {
+  onBack?: () => void
+}
+
+export default function MultiplayerGame({ onBack }: Props) {
   const { room, playerNum, opponentName, roundTimeLeft, myChoice, opponentChoice, roundResult, reason, leaveRoom, makeChoice } = useRoom()
   const { player } = useAuth()
   const { toast } = useToast()
@@ -45,6 +49,7 @@ export default function MultiplayerGame() {
   function handleLeave() {
     leaveRoom()
     toast('Left the game', 'info')
+    onBack?.()
   }
 
   if (!room || !playerNum) return null

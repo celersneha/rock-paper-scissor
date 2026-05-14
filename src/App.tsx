@@ -10,6 +10,16 @@ import MultiplayerLobby from './components/MultiplayerLobby'
 import MultiplayerGame from './components/MultiplayerGame'
 import { useRoom } from './contexts/RoomContext'
 
+const MODE_KEY = 'rps_mode'
+
+function getSavedMode(): 'multiplayer' | null {
+  try {
+    const raw = sessionStorage.getItem(MODE_KEY)
+    if (raw === 'multiplayer') return 'multiplayer'
+    return null
+  } catch { return null }
+}
+
 function GameRouter() {
   const { user, player, loading } = useAuth()
 
@@ -20,30 +30,36 @@ function GameRouter() {
 }
 
 function ModeSelectRouter() {
-  const [mode, setMode] = useState<'select' | 'singleplayer' | 'multiplayer'>('select')
+  const [mode, setMode] = useState<'select' | 'singleplayer' | 'multiplayer'>(
+    () => getSavedMode() || 'select'
+  )
+
+  function handleSelect(m: 'select' | 'singleplayer' | 'multiplayer') {
+    setMode(m)
+    try {
+      if (m === 'multiplayer') sessionStorage.setItem(MODE_KEY, 'multiplayer')
+      else sessionStorage.removeItem(MODE_KEY)
+    } catch {}
+  }
 
   if (mode === 'singleplayer') return <SingleplayerGame />
 
   if (mode === 'multiplayer') {
     return (
       <RoomProvider>
-        <MultiplayerRouter onBack={() => setMode('select')} />
+        <MultiplayerRouter onBack={() => handleSelect('select')} />
       </RoomProvider>
     )
   }
 
-  return <ModeSelect onSelect={setMode} />
+  return <ModeSelect onSelect={handleSelect} />
 }
 
 function MultiplayerRouter({ onBack }: { onBack: () => void }) {
   const { room } = useRoom()
 
   if (room && (room.status === 'playing' || room.status === 'finished')) {
-    return <MultiplayerGame />
-  }
-
-  if (room) {
-    return <MultiplayerLobby onBack={onBack} />
+    return <MultiplayerGame onBack={onBack} />
   }
 
   return <MultiplayerLobby onBack={onBack} />

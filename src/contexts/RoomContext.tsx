@@ -30,12 +30,37 @@ const RoomContext = createContext<RoomContextValue>(null!)
 
 export const useRoom = () => useContext(RoomContext)
 
+const SESSION_KEY = 'rps_room'
+
+function saveSession(roomId: string, playerNum: 1 | 2) {
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ roomId, playerNum })) } catch {}
+}
+
+function clearSession() {
+  try { sessionStorage.removeItem(SESSION_KEY) } catch {}
+}
+
+function getSession(): { roomId: string; playerNum: 1 | 2 } | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed?.roomId && (parsed?.playerNum === 1 || parsed?.playerNum === 2)) return parsed
+    return null
+  } catch { return null }
+}
+
 export function RoomProvider({ children }: { children: ReactNode }) {
   const { player } = useAuth()
   const { toast } = useToast()
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const roomRef = useRef<Room | null>(null)
+  const playerNumRef = useRef<1 | 2 | null>(null)
+  const playerRef = useRef(player)
+
+  useEffect(() => { playerRef.current = player }, [player])
 
   const [state, setState] = useState<RoomState>({
     room: null, playerNum: null, opponentName: '',
@@ -44,6 +69,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   })
 
   function cleanup() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
   }
@@ -59,30 +85,36 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     }, 200)
   }, [])
 
-  useEffect(() => {
-    const room = state.room
-    const pNum = state.playerNum
-    if (!room || !pNum || room.status !== 'waiting') return
+  function startPolling(roomId: string) {
+    if (pollRef.current) clearInterval(pollRef.current)
 
-    const id = setInterval(async () => {
-      const updated = await getRoom(room.id)
-      if (!updated || updated.status !== 'playing') return
+    pollRef.current = setInterval(async () => {
+      try {
+        const updated = await getRoom(roomId)
+        if (!updated || updated.status !== 'playing') return
 
-      const oppName = updated.player2_id
-        ? (await getPlayerBatch([updated.player2_id]))[0]?.username || 'Opponent'
-        : ''
+        let oppName = ''
+        if (updated.player2_id) {
+          const [p2] = await getPlayerBatch([updated.player2_id])
+          oppName = p2?.username || 'Opponent'
+        }
 
-      setState((s) => ({
-        ...s, room: updated, opponentName: oppName, roundTimeLeft: ROUND_TIME,
-      }))
+        if (pollRef.current) clearInterval(pollRef.current)
+        pollRef.current = null
+
+        roomRef.current = updated
+        setState((s) => ({
+          ...s, room: updated, opponentName: oppName, roundTimeLeft: ROUND_TIME,
+        }))
+        setTimer(updated.round_started_at)
+      } catch { }
     }, 2000)
-
-    return () => clearInterval(id)
-  }, [state.room?.id, state.room?.status, state.playerNum])
+  }
 
   function subscribe(roomId: string, pNum: 1 | 2) {
     cleanup()
     setTimer(null)
+    playerNumRef.current = pNum
 
     const channel = supabase
       .channel(`room-${roomId}`)
@@ -103,6 +135,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
             oppName = p2?.username || 'Opponent'
           }
 
+          const wasWaiting = roomRef.current?.status === 'waiting' || !roomRef.current
+          roomRef.current = room
+
           setState((s) => ({
             ...s, room,
             myChoice, opponentChoice: oppChoice,
@@ -112,11 +147,16 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           }))
 
           if (room.status === 'playing') {
+            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
             setTimer(room.round_started_at)
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED' && roomRef.current?.status === 'waiting') {
+          startPolling(roomId)
+        }
+      })
 
     channelRef.current = channel
   }
@@ -130,6 +170,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         room, playerNum: 1, opponentName: '', roundTimeLeft: ROUND_TIME,
         myChoice: null, opponentChoice: null, roundResult: null, reason: null,
       })
+      saveSession(room.id, 1)
       subscribe(room.id, 1)
       return null
     } catch (err: any) {
@@ -145,6 +186,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       room: null, playerNum: null, opponentName: '', roundTimeLeft: ROUND_TIME,
       myChoice: null, opponentChoice: null, roundResult: null, reason: null,
     })
+    clearSession()
     try {
       const { room, error } = await joinRoom(code, player.id)
       if (error) return error
@@ -156,6 +198,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         roundTimeLeft: ROUND_TIME, myChoice: null, opponentChoice: null,
         roundResult: null, reason: null,
       })
+      saveSession(room.id, 2)
       subscribe(room.id, 2)
       setTimer(room.round_started_at)
       return null
@@ -166,12 +209,50 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   function leaveRoom() {
     cleanup()
+    clearSession()
     roomRef.current = null
+    playerNumRef.current = null
     setState({
       room: null, playerNum: null, opponentName: '', roundTimeLeft: ROUND_TIME,
       myChoice: null, opponentChoice: null, roundResult: null, reason: null,
     })
   }
+
+  useEffect(() => {
+    const session = getSession()
+    if (!session || !player) return
+
+    ;(async () => {
+      try {
+        const room = await getRoom(session.roomId)
+        if (!room) { clearSession(); return }
+
+        roomRef.current = room
+        const pNum = session.playerNum
+        let oppName = ''
+        if (room.status === 'playing' || room.status === 'finished') {
+          const oppId = pNum === 1 ? room.player2_id : room.player1_id
+          if (oppId) {
+            const [opp] = await getPlayerBatch([oppId])
+            oppName = opp?.username || 'Opponent'
+          }
+        }
+
+        setState({
+          room, playerNum: pNum, opponentName: oppName,
+          roundTimeLeft: ROUND_TIME,
+          myChoice: null, opponentChoice: null,
+          roundResult: null, reason: null,
+        })
+        subscribe(room.id, pNum)
+        if (room.status === 'playing') setTimer(room.round_started_at)
+      } catch { clearSession() }
+    })()
+  }, [player])
+
+  useEffect(() => {
+    return () => { cleanup(); clearSession() }
+  }, [])
 
   async function makeChoice(choice: Choice) {
     const room = roomRef.current
