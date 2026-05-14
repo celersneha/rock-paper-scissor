@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef } from 'react'
-import { MAX_ROUNDS, ROUND_TIME } from '../lib/constants'
+import { MAX_ROUNDS } from '../lib/constants'
 import { getRoom } from '../lib/api'
 import { useRoom } from '../contexts/RoomContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
 import { choices, meta, type Choice, type RoundData } from '../lib/game'
 
-type PickPhase = 'waiting' | 'choosing' | 'reveal' | 'round_result' | 'finished'
+type PickPhase = 'choosing' | 'reveal' | 'round_result' | 'finished'
 
 interface Props {
   onBack?: () => void
@@ -16,29 +16,25 @@ export default function MultiplayerGame({ onBack }: Props) {
   const { room, playerNum, opponentName, myChoice, opponentChoice, roundResult, reason, leaveRoom, makeChoice } = useRoom()
   const { player } = useAuth()
   const { toast } = useToast()
-  const [pickPhase, setPickPhase] = useState<PickPhase>('waiting')
+  const [pickPhase, setPickPhase] = useState<PickPhase>('choosing')
   const [localChoice, setLocalChoice] = useState<Choice | null>(null)
-  const [timeLeft, setTimeLeft] = useState(ROUND_TIME)
   const [localOpponentChoice, setLocalOpponentChoice] = useState<Choice | null>(null)
   const [localRoundResult, setLocalRoundResult] = useState<RoundData | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     setLocalChoice(null)
     setLocalOpponentChoice(null)
     setLocalRoundResult(null)
 
-    if (!room || room.status === 'finished') return
+    if (!room || room.status === 'finished') { setPickPhase('finished'); return }
     if (room.status !== 'playing') return
 
-    const started = room.round_started_at ? new Date(room.round_started_at).getTime() : Date.now()
+    setPickPhase('choosing')
+  }, [room?.id, room?.status, room?.current_round])
 
-    const tick = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - started) / 1000)
-      setTimeLeft(Math.max(0, ROUND_TIME - elapsed))
-    }, 200)
-    const poll = setInterval(async () => {
+  useEffect(() => {
+    if (!room || room.status !== 'playing') return
+    const id = setInterval(async () => {
       try {
         const updated = await getRoom(room.id)
         if (!updated) return
@@ -47,43 +43,31 @@ export default function MultiplayerGame({ onBack }: Props) {
         const oppKey = playerNum === 1 ? 'p2_choice' : 'p1_choice'
         const opp = round[oppKey] as Choice | null
         if (opp) setLocalOpponentChoice(opp)
-        if (round.result) setLocalRoundResult(round as RoundData)
+        if (round.result) {
+          setLocalRoundResult(round as RoundData)
+          setPickPhase('round_result')
+        }
       } catch {}
     }, 1000)
+    return () => clearInterval(id)
+  }, [room?.id, room?.status, room?.current_round, playerNum])
 
-    pollRef.current = poll
-    return () => { clearInterval(tick); clearInterval(poll) }
-  }, [room?.id, room?.status, room?.current_round, room?.round_started_at, playerNum])
-
+  const bothChosen = localChoice && (localOpponentChoice || opponentChoice)
   useEffect(() => {
-    if (!room) return
-    if (room.status === 'finished') { setPickPhase('finished'); return }
-
-    const round = room.rounds[room.current_round - 1]
-    const resolved = round?.result || localRoundResult?.result
-    if (resolved) { setPickPhase('round_result'); return }
-
-    if (timeLeft > 0 && timeLeft < ROUND_TIME) {
-      setPickPhase('choosing')
-      return
-    }
-
-    if (pickPhase === 'waiting') setPickPhase('choosing')
-  }, [room, timeLeft, pickPhase, localRoundResult])
+    if (bothChosen && pickPhase === 'choosing') setPickPhase('reveal')
+  }, [bothChosen, pickPhase])
 
   function handleChoice(c: Choice) {
     if (pickPhase !== 'choosing') return
     setLocalChoice(c)
     makeChoice(c)
-    setTimeout(() => setPickPhase('reveal'), 1200)
   }
 
   function handleNext() {
     setLocalChoice(null)
     setLocalOpponentChoice(null)
     setLocalRoundResult(null)
-    setPickPhase('waiting')
-    setTimeout(() => setPickPhase('choosing'), 300)
+    setPickPhase('choosing')
   }
 
   function handleLeave() {
@@ -132,25 +116,22 @@ export default function MultiplayerGame({ onBack }: Props) {
         </div>
       </div>
 
-      {timeLeft >= 0 && !isFinished && pickPhase !== 'round_result' && (
-        <div className="text-center mb-6">
-          <p className="text-5xl font-bold mb-1">{timeLeft}</p>
-          <p className="text-text-soft text-sm">seconds</p>
-        </div>
-      )}
-
       <div className="flex items-center gap-12 md:gap-24 mb-8 text-center">
         <div>
           <p className="text-text-soft text-xs mb-2">You</p>
           <div className="text-7xl min-w-[5rem]">
-            {localChoice ? meta[localChoice].emoji : ((pickPhase === 'reveal' || pickPhase === 'round_result') && myChoice ? meta[myChoice].emoji : '❔')}
+            {localChoice
+              ? meta[localChoice].emoji
+              : (pickPhase === 'round_result' && myChoice ? meta[myChoice].emoji : '❔')}
           </div>
         </div>
         <span className="text-2xl text-text-muted font-bold">VS</span>
         <div>
           <p className="text-text-soft text-xs mb-2">{opponentLabel}</p>
           <div className="text-7xl min-w-[5rem]">
-            {(pickPhase === 'reveal' || pickPhase === 'round_result') ? (displayOpponentChoice ? meta[displayOpponentChoice].emoji : '❔') : '❔'}
+            {(pickPhase === 'reveal' || pickPhase === 'round_result')
+              ? (displayOpponentChoice ? meta[displayOpponentChoice].emoji : '❔')
+              : '❔'}
           </div>
         </div>
       </div>
@@ -181,15 +162,11 @@ export default function MultiplayerGame({ onBack }: Props) {
         </>
       )}
 
-      {pickPhase === 'waiting' && (
-        <div className="flex items-center gap-2 text-amber">
-          <span className="inline-block w-2 h-2 bg-amber rounded-full animate-pulse" />
-          <span className="text-sm">Starting...</span>
-        </div>
-      )}
-
       {pickPhase === 'reveal' && (
-        <p className="text-text-soft text-sm">Waiting for opponent...</p>
+        <div className="flex items-center gap-2 text-amber mb-4">
+          <span className="inline-block w-2 h-2 bg-amber rounded-full animate-pulse" />
+          <span className="text-sm">Revealing...</span>
+        </div>
       )}
 
       {isFinished ? (
